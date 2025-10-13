@@ -16,8 +16,8 @@ import (
 )
 
 const (
-	VERSION        = "2.0.0"
-	CURL_TIMEOUT   = 5 * time.Second
+	VERSION         = "2.0.0"
+	CURL_TIMEOUT    = 5 * time.Second
 	DOT_LABEL_WIDTH = 22
 )
 
@@ -80,9 +80,9 @@ func main() {
 	httpClient = &http.Client{
 		Timeout: CURL_TIMEOUT,
 		Transport: &http.Transport{
-			MaxIdleConns:        10,
-			IdleConnTimeout:     30 * time.Second,
-			DisableCompression:  false,
+			MaxIdleConns:       10,
+			IdleConnTimeout:    30 * time.Second,
+			DisableCompression: false,
 		},
 	}
 
@@ -92,7 +92,7 @@ func main() {
 	// Display MOTD
 	printHeader()
 	printSection("System Information")
-	
+
 	showOS()
 	showUptime()
 	showLoad()
@@ -100,7 +100,7 @@ func main() {
 	showBandwidth()
 
 	printSection("Services & Resources")
-	
+
 	showUser()
 	showProcesses()
 	showDocker()
@@ -210,18 +210,32 @@ func dotLabel(label string) {
 
 func printHeader() {
 	fmt.Println()
-	
+
 	hostname, _ := os.Hostname()
-	
+
 	// Try figlet + lolcat
 	if hasFiglet() && hasLolcat() {
 		cmd := exec.Command("sh", "-c", fmt.Sprintf("figlet '%s' | lolcat -f", hostname))
 		cmd.Stdout = os.Stdout
 		cmd.Run()
 	} else {
-		fmt.Printf("%s%s╔══════════════════════════════════════╗%s\n", BOLD, CYAN, RESET)
-		fmt.Printf("%s%s║  Connected to: %-20s ║%s\n", BOLD, CYAN, hostname, RESET)
-		fmt.Printf("%s%s╚══════════════════════════════════════╝%s\n", BOLD, CYAN, RESET)
+		// Dynamic box sizing based on hostname length
+		prefix := "  Connected to: "
+		minWidth := len(prefix) + len(hostname) + 1 // +1 for trailing space
+		if minWidth < 38 {
+			minWidth = 38 // Minimum box width
+		}
+
+		// Build the box border
+		topBottom := "╔" + strings.Repeat("═", minWidth-2) + "╗"
+
+		// Calculate padding for hostname to fill the box
+		contentWidth := minWidth - 4 // -4 for "║  " and " ║"
+		hostnameFormatted := fmt.Sprintf("%-*s", contentWidth-len("Connected to: "), hostname)
+
+		fmt.Printf("%s%s%s%s\n", BOLD, CYAN, topBottom, RESET)
+		fmt.Printf("%s%s║  Connected to: %s ║%s\n", BOLD, CYAN, hostnameFormatted, RESET)
+		fmt.Printf("%s%s%s%s\n", BOLD, CYAN, strings.Replace(topBottom, "╔", "╚", 1), RESET)
 	}
 	fmt.Println()
 }
@@ -283,7 +297,7 @@ func showMemory() {
 				used, _ := strconv.ParseFloat(fields[2], 64)
 				totalGB := total / 1073741824.0
 				usedGB := used / 1073741824.0
-				
+
 				dotLabel("Memory")
 				fmt.Printf("%s%.2f GB / %.2f GB%s\n", BLUE, usedGB, totalGB, RESET)
 			}
@@ -305,16 +319,16 @@ func showBandwidth() {
 	parts := strings.Split(string(output), ";")
 	if len(parts) >= 5 {
 		rx, tx := parts[3], parts[4]
-		
+
 		rxVal, _ := strconv.ParseFloat(rx, 64)
 		txVal, _ := strconv.ParseFloat(tx, 64)
-		
+
 		rxGB := rxVal / 1073741824.0
 		txGB := txVal / 1073741824.0
-		
+
 		rxEst := (rxVal / 1073741824.0) * (30.0 / float64(time.Now().Day()))
 		txEst := (txVal / 1073741824.0) * (30.0 / float64(time.Now().Day()))
-		
+
 		dotLabel("Bandwidth (rx)")
 		fmt.Printf("%s%.2f GB / %.2f GB est%s\n", BLUE, rxGB, rxEst, RESET)
 		dotLabel("Bandwidth (tx)")
@@ -327,7 +341,7 @@ func showUser() {
 	if err != nil {
 		return
 	}
-	
+
 	count := strings.TrimSpace(string(output))
 	dotLabel("Logged in users")
 	fmt.Printf("%s%s%s\n", BLUE, count, RESET)
@@ -338,7 +352,7 @@ func showProcesses() {
 	if err != nil {
 		return
 	}
-	
+
 	count := strings.TrimSpace(string(output))
 	dotLabel("Processes")
 	fmt.Printf("%s%s%s\n", BLUE, count, RESET)
@@ -374,13 +388,13 @@ func showDisk() {
 				used := fields[2]
 				total := fields[1]
 				pct := strings.TrimSuffix(fields[4], "%")
-				
+
 				usedVal, _ := strconv.ParseFloat(used, 64)
 				totalVal, _ := strconv.ParseFloat(total, 64)
-				
+
 				usedGB := usedVal / 1048576.0
 				totalGB := totalVal / 1048576.0
-				
+
 				dotLabel("Disk (/)")
 				fmt.Printf("%s%.2f GB / %.2f GB (%s%% used)%s\n", BLUE, usedGB, totalGB, pct, RESET)
 			}
@@ -398,13 +412,13 @@ func showDisk() {
 					used := fields[2]
 					total := fields[1]
 					pct := strings.TrimSuffix(fields[4], "%")
-					
+
 					usedVal, _ := strconv.ParseFloat(used, 64)
 					totalVal, _ := strconv.ParseFloat(total, 64)
-					
+
 					usedGB := usedVal / 1048576.0
 					totalGB := totalVal / 1048576.0
-					
+
 					dotLabel(fmt.Sprintf("Disk (%s)", config.TankMount))
 					fmt.Printf("%s%.2f GB / %.2f GB (%s%% used)%s\n", BLUE, usedGB, totalGB, pct, RESET)
 				}
@@ -459,13 +473,12 @@ func showPlex() {
 
 	// Parse XML
 	type Session struct {
-		Size            int `xml:"size,attr"`
-		VideoDecision   string
-		SessionBandwidth int `xml:"Session>bandwidth,attr"`
+		Size          int `xml:"size,attr"`
+		VideoDecision string
 	}
 
 	type MediaContainer struct {
-		Size  int `xml:"size,attr"`
+		Size   int `xml:"size,attr"`
 		Videos []struct {
 			TranscodeSession struct {
 				VideoDecision string `xml:"videoDecision,attr"`
