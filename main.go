@@ -222,23 +222,25 @@ func printHeader() {
 		// Dynamic box sizing based on hostname length
 		label := "Connected to: "
 		contentLength := len(label) + len(hostname)
-		boxWidth := contentLength + 4 // +4 for "║  " and " ║"
-		if boxWidth < 38 {
-			boxWidth = 38 // Minimum box width
+
+		// Total line width: ║ + 2 spaces + content + 1 space + ║ = content + 5
+		totalWidth := contentLength + 5
+		if totalWidth < 40 {
+			totalWidth = 40 // Minimum total width (matches original 38 chars of ═)
 		}
 
-		// Calculate inner content width (space between ║  and  ║)
-		innerWidth := boxWidth - 4
+		// Border has 2 fewer chars than total (for corner pieces)
+		borderWidth := totalWidth - 2
 
 		// Build borders
-		topBorder := "╔" + strings.Repeat("═", boxWidth-2) + "╗"
-		bottomBorder := "╚" + strings.Repeat("═", boxWidth-2) + "╝"
+		topBorder := "╔" + strings.Repeat("═", borderWidth) + "╗"
+		bottomBorder := "╚" + strings.Repeat("═", borderWidth) + "╝"
 
-		// Format content with proper padding
-		content := fmt.Sprintf("%-*s", innerWidth, label+hostname)
+		// Content width is total minus the border chars: ║ + 2 spaces + 1 space + ║ = 5
+		paddedContent := fmt.Sprintf("%-*s", totalWidth-5, label+hostname)
 
 		fmt.Printf("%s%s%s%s\n", BOLD, CYAN, topBorder, RESET)
-		fmt.Printf("%s%s║  %s ║%s\n", BOLD, CYAN, content, RESET)
+		fmt.Printf("%s%s║  %s ║%s\n", BOLD, CYAN, paddedContent, RESET)
 		fmt.Printf("%s%s%s%s\n", BOLD, CYAN, bottomBorder, RESET)
 	}
 	fmt.Println()
