@@ -220,22 +220,26 @@ func printHeader() {
 		cmd.Run()
 	} else {
 		// Dynamic box sizing based on hostname length
-		prefix := "  Connected to: "
-		minWidth := len(prefix) + len(hostname) + 1 // +1 for trailing space
-		if minWidth < 38 {
-			minWidth = 38 // Minimum box width
+		label := "Connected to: "
+		contentLength := len(label) + len(hostname)
+		boxWidth := contentLength + 4 // +4 for "║  " and " ║"
+		if boxWidth < 38 {
+			boxWidth = 38 // Minimum box width
 		}
 
-		// Build the box border
-		topBottom := "╔" + strings.Repeat("═", minWidth-2) + "╗"
+		// Calculate inner content width (space between ║  and  ║)
+		innerWidth := boxWidth - 4
 
-		// Calculate padding for hostname to fill the box
-		contentWidth := minWidth - 4 // -4 for "║  " and " ║"
-		hostnameFormatted := fmt.Sprintf("%-*s", contentWidth-len("Connected to: "), hostname)
+		// Build borders
+		topBorder := "╔" + strings.Repeat("═", boxWidth-2) + "╗"
+		bottomBorder := "╚" + strings.Repeat("═", boxWidth-2) + "╝"
 
-		fmt.Printf("%s%s%s%s\n", BOLD, CYAN, topBottom, RESET)
-		fmt.Printf("%s%s║  Connected to: %s ║%s\n", BOLD, CYAN, hostnameFormatted, RESET)
-		fmt.Printf("%s%s%s%s\n", BOLD, CYAN, strings.Replace(topBottom, "╔", "╚", 1), RESET)
+		// Format content with proper padding
+		content := fmt.Sprintf("%-*s", innerWidth, label+hostname)
+
+		fmt.Printf("%s%s%s%s\n", BOLD, CYAN, topBorder, RESET)
+		fmt.Printf("%s%s║  %s ║%s\n", BOLD, CYAN, content, RESET)
+		fmt.Printf("%s%s%s%s\n", BOLD, CYAN, bottomBorder, RESET)
 	}
 	fmt.Println()
 }
