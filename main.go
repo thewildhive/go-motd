@@ -320,7 +320,7 @@ func showBandwidth() {
 
 	parts := strings.Split(string(output), ";")
 	if len(parts) >= 5 {
-		rx, tx := parts[3], parts[4]
+		rx, tx := parts[9], parts[10]
 
 		rxVal, _ := strconv.ParseFloat(rx, 64)
 		txVal, _ := strconv.ParseFloat(tx, 64)
