@@ -1,3 +1,15 @@
+## [0.5.0](https://github.com/calmcacil/go-motd/compare/v0.4.2...v0.5.0) (2025-11-03)
+
+
+### Features
+
+* add test feature for version verification ([9288784](https://github.com/calmcacil/go-motd/commit/92887840d9a27d576434067b29e04fd8aaad8141))
+
+
+### Bug Fixes
+
+* correct GitHub Actions workflow to prevent version reversion ([2ba0230](https://github.com/calmcacil/go-motd/commit/2ba0230c051fc60b9d32555dd4758ca2dc49bafb))
+
 ## [0.4.2](https://github.com/calmcacil/go-motd/compare/v0.4.1...v0.4.2) (2025-11-03)
 
 ## [0.4.1](https://github.com/calmcacil/go-motd/compare/v0.4.0...v0.4.1) (2025-11-03)
