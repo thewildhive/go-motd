@@ -1,6 +1,6 @@
 {
   "name": "motd",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "description": "Go implementation of MOTD (Message of the Day) with system information and media service statistics",
   "main": "main.go",
   "scripts": {
