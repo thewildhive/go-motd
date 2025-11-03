@@ -44,6 +44,10 @@ Options:
   -h              Show this help message
   -v              Show version information
   -d              Enable debug mode
+
+Commands:
+  self-update     Update to the latest version from GitHub releases
+  self-update --force    Force update to latest version (even if current)
 ```
 
 ## Configuration
@@ -93,6 +97,42 @@ system:
   compose_dir: "/opt/apps/compose"
   tank_mount: "/mnt/tank"
 ```
+
+## Self-Update
+
+The `motd` binary includes a self-update feature that allows you to update to the latest version directly from GitHub releases:
+
+```bash
+# Check for updates and install if available
+motd self-update
+
+# Force update to latest version (even if current)
+motd self-update --force
+```
+
+### Security Features
+
+- **Checksum Verification**: Downloads are verified using SHA256 checksums
+- **HTTPS Only**: All downloads use secure HTTPS connections
+- **Backup & Rollback**: Automatic backup creation with rollback on failure
+- **Platform Detection**: Automatically detects your OS and architecture
+
+### Update Process
+
+1. Checks current version against latest GitHub release
+2. Asks for confirmation before downloading (unless `--force` is used)
+3. Downloads the appropriate binary for your platform
+4. Verifies the binary integrity using checksums
+5. Creates a backup of the current binary
+6. Replaces the binary atomically
+7. Cleans up temporary files
+
+### Platform Support
+
+Self-update supports the same platforms as the releases:
+- Linux (amd64, arm64)
+- macOS (amd64, arm64) 
+- Windows (amd64)
 
 ## Technical Details
 
