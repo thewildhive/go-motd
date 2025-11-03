@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"encoding/json"
 	"encoding/xml"
 	"flag"
@@ -10,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
+	"os/user"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -71,7 +71,7 @@ var (
 
 // Config file paths in priority order
 var configPaths = []string{
-	filepath.Join(os.Getenv("HOME"), ".config", "motd", "config.yml"),
+	filepath.Join(getUserHome(), ".config", "motd", "config.yml"),
 	"/opt/motd/config.yml",
 }
 
@@ -79,7 +79,6 @@ func main() {
 	showHelp := flag.Bool("h", false, "Show help message")
 	showVersion := flag.Bool("v", false, "Show version information")
 	debug := flag.Bool("d", false, "Enable debug mode")
-	migrateConfig := flag.Bool("migrate-config", false, "Migrate environment variables to YAML config")
 	flag.Parse()
 
 	if *showHelp {
@@ -89,11 +88,6 @@ func main() {
 
 	if *showVersion {
 		fmt.Printf("MOTD Script v%s\n", VERSION)
-		return
-	}
-
-	if *migrateConfig {
-		migrateToYAML()
 		return
 	}
 
@@ -151,17 +145,10 @@ Options:
   -h              Show this help message
   -v              Show version information
   -d              Enable debug mode
-  -migrate-config Migrate environment variables to YAML config file
 
 Configuration Files:
   ~/.config/motd/config.yml    (highest priority)
-  /opt/motd/config.yml         (fallback)
-
-Environment Variables (legacy fallback):
-  ENV_FILE, PLEX_URL, PLEX_TOKEN, JELLYFIN_URL, JELLYFIN_TOKEN,
-  SONARR_URL, SONARR_API_KEY, RADARR_URL, RADARR_API_KEY,
-  ORGANIZR_URL, ORGANIZR_API_KEY, TANK_MOUNT, COMPOSEDIR,
-  VNSTAT_INTERFACE`)
+  /opt/motd/config.yml         (fallback)`)
 }
 
 func debugLog(msg string, args ...interface{}) {
@@ -197,215 +184,18 @@ func loadYAMLConfig() (Config, error) {
 	return yamlConfig, fmt.Errorf("no YAML config files found")
 }
 
-func loadLegacyConfig() Config {
-	var legacyConfig Config
-
-	// Load environment file if it exists
-	envFile := getEnv("ENV_FILE", "/opt/apps/compose/.env")
-	if _, err := os.Stat(envFile); err == nil {
-		loadEnvFile(envFile)
-	}
-
-	// Create service instances from environment variables
-	if plexURL := getEnv("PLEX_URL", ""); plexURL != "" {
-		legacyConfig.Services.Plex = append(legacyConfig.Services.Plex, ServiceConfig{
-			Name:    "Default",
-			URL:     plexURL,
-			Token:   getEnv("PLEX_TOKEN", ""),
-			Enabled: true,
-		})
-	}
-
-	if jellyfinURL := getEnv("JELLYFIN_URL", ""); jellyfinURL != "" {
-		legacyConfig.Services.Jellyfin = append(legacyConfig.Services.Jellyfin, ServiceConfig{
-			Name:    "Default",
-			URL:     jellyfinURL,
-			Token:   getEnv("JELLYFIN_TOKEN", ""),
-			Enabled: true,
-		})
-	}
-
-	if sonarrURL := getEnv("SONARR_URL", ""); sonarrURL != "" {
-		legacyConfig.Services.Sonarr = append(legacyConfig.Services.Sonarr, ServiceConfig{
-			Name:    "Default",
-			URL:     sonarrURL,
-			APIKey:  getEnv("SONARR_API_KEY", ""),
-			Enabled: true,
-		})
-	}
-
-	if radarrURL := getEnv("RADARR_URL", ""); radarrURL != "" {
-		legacyConfig.Services.Radarr = append(legacyConfig.Services.Radarr, ServiceConfig{
-			Name:    "Default",
-			URL:     radarrURL,
-			APIKey:  getEnv("RADARR_API_KEY", ""),
-			Enabled: true,
-		})
-	}
-
-	if organizrURL := getEnv("ORGANIZR_URL", ""); organizrURL != "" {
-		legacyConfig.Services.Organizr = append(legacyConfig.Services.Organizr, ServiceConfig{
-			Name:    "Default",
-			URL:     organizrURL,
-			APIKey:  getEnv("ORGANIZR_API_KEY", ""),
-			Enabled: true,
-		})
-	}
-
-	// Set system configuration
-	legacyConfig.System.ComposeDir = getEnv("COMPOSEDIR", "/opt/apps/compose")
-	legacyConfig.System.TankMount = getEnv("TANK_MOUNT", "/mnt/tank")
-	legacyConfig.System.Network.Interface = getEnv("VNSTAT_INTERFACE", "")
-
-	debugLog("Loaded legacy config from environment variables")
-	return legacyConfig
-}
-
 func loadConfig() {
-	// Try YAML config first
+	// Load YAML configuration
 	yamlConfig, err := loadYAMLConfig()
-	if err == nil {
-		config = yamlConfig
-		debugLog("Using YAML configuration")
-		return
-	}
-
-	// Fall back to legacy environment variables
-	config = loadLegacyConfig()
-	debugLog("Using legacy environment variable configuration")
-}
-
-func migrateToYAML() {
-	fmt.Printf("Migrating environment variables to YAML configuration...\n")
-
-	// Load current environment configuration
-	legacyConfig := loadLegacyConfig()
-
-	// Validate that we have meaningful data to migrate
-	hasServices := len(legacyConfig.Services.Plex) > 0 ||
-		len(legacyConfig.Services.Jellyfin) > 0 ||
-		len(legacyConfig.Services.Sonarr) > 0 ||
-		len(legacyConfig.Services.Radarr) > 0 ||
-		len(legacyConfig.Services.Organizr) > 0
-
-	hasSystemConfig := legacyConfig.System.ComposeDir != "/opt/apps/compose" ||
-		legacyConfig.System.TankMount != "/mnt/tank" ||
-		legacyConfig.System.Network.Interface != ""
-
-	if !hasServices && !hasSystemConfig {
-		fmt.Printf("%sNo meaningful configuration found to migrate. Using default values.%s\n", YELLOW, RESET)
-		return
-	}
-
-	// Create config directory if it doesn't exist
-	configDir := filepath.Join(os.Getenv("HOME"), ".config", "motd")
-	if err := os.MkdirAll(configDir, 0755); err != nil {
-		fmt.Printf("%sError creating config directory %s: %v%s\n", RED, configDir, err, RESET)
-		return
-	}
-
-	// Check if config file already exists
-	configPath := filepath.Join(configDir, "config.yml")
-	if _, err := os.Stat(configPath); err == nil {
-		fmt.Printf("%sWarning: Config file already exists at %s%s\n", YELLOW, configPath, RESET)
-		fmt.Printf("Do you want to overwrite it? [y/N]: ")
-
-		var response string
-		fmt.Scanln(&response)
-		if strings.ToLower(response) != "y" && strings.ToLower(response) != "yes" {
-			fmt.Printf("Migration cancelled.\n")
-			return
-		}
-
-		// Create backup of existing config
-		backupPath := configPath + ".backup"
-		if err := copyFile(configPath, backupPath); err != nil {
-			fmt.Printf("%sWarning: Failed to create backup: %v%s\n", YELLOW, err, RESET)
-		} else {
-			fmt.Printf("Created backup at: %s\n", backupPath)
-		}
-	}
-
-	// Prepare YAML data
-	yamlData, err := yaml.Marshal(legacyConfig)
 	if err != nil {
-		fmt.Printf("%sError marshaling YAML: %v%s\n", RED, err, RESET)
-		return
+		fmt.Printf("%sError: No configuration file found. Please create a config file at:%s\n", RED, RESET)
+		fmt.Printf("  %s\n", configPaths[0])
+		fmt.Printf("  %s\n", configPaths[1])
+		os.Exit(1)
 	}
 
-	// Write config file
-	if err := os.WriteFile(configPath, yamlData, 0644); err != nil {
-		fmt.Printf("%sError writing config file %s: %v%s\n", RED, configPath, err, RESET)
-		return
-	}
-
-	fmt.Printf("%sConfiguration successfully migrated to: %s%s\n", GREEN, configPath, RESET)
-	fmt.Printf("You can now remove the environment variables from your system.\n")
-
-	// Show what was migrated
-	fmt.Printf("\n%sMigrated configuration:%s\n", BOLD, RESET)
-	if hasServices {
-		fmt.Printf("  Services: ")
-		services := []string{}
-		if len(legacyConfig.Services.Plex) > 0 {
-			services = append(services, "Plex")
-		}
-		if len(legacyConfig.Services.Jellyfin) > 0 {
-			services = append(services, "Jellyfin")
-		}
-		if len(legacyConfig.Services.Sonarr) > 0 {
-			services = append(services, "Sonarr")
-		}
-		if len(legacyConfig.Services.Radarr) > 0 {
-			services = append(services, "Radarr")
-		}
-		if len(legacyConfig.Services.Organizr) > 0 {
-			services = append(services, "Organizr")
-		}
-		fmt.Printf("%s\n", strings.Join(services, ", "))
-	}
-	if hasSystemConfig {
-		systemParts := []string{}
-		if legacyConfig.System.ComposeDir != "/opt/apps/compose" {
-			systemParts = append(systemParts, fmt.Sprintf("ComposeDir=%s", legacyConfig.System.ComposeDir))
-		}
-		if legacyConfig.System.TankMount != "/mnt/tank" {
-			systemParts = append(systemParts, fmt.Sprintf("TankMount=%s", legacyConfig.System.TankMount))
-		}
-		if legacyConfig.System.Network.Interface != "" {
-			systemParts = append(systemParts, fmt.Sprintf("Interface=%s", legacyConfig.System.Network.Interface))
-		}
-		fmt.Printf("  System: %s\n", strings.Join(systemParts, ", "))
-	}
-}
-
-func loadEnvFile(path string) {
-	file, err := os.Open(path)
-	if err != nil {
-		return
-	}
-	defer file.Close()
-
-	scanner := bufio.NewScanner(file)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		parts := strings.SplitN(line, "=", 2)
-		if len(parts) == 2 {
-			key := strings.TrimSpace(parts[0])
-			value := strings.Trim(strings.TrimSpace(parts[1]), "\"'")
-			os.Setenv(key, value)
-		}
-	}
-}
-
-func getEnv(key, defaultValue string) string {
-	if value := os.Getenv(key); value != "" {
-		return value
-	}
-	return defaultValue
+	config = yamlConfig
+	debugLog("Using YAML configuration")
 }
 
 func hasMediaServices() bool {
@@ -1070,6 +860,15 @@ func showOrganizr() {
 }
 
 // Helper functions
+func getUserHome() string {
+	usr, err := user.Current()
+	if err != nil {
+		// Fallback to HOME environment variable if user.Current() fails
+		return os.Getenv("HOME")
+	}
+	return usr.HomeDir
+}
+
 func hasCommand(cmd string) bool {
 	_, err := exec.LookPath(cmd)
 	return err == nil

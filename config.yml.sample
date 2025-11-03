@@ -7,9 +7,6 @@
 # Configuration Priority:
 # 1. ~/.config/motd/config.yml (highest priority - user config)
 # 2. /opt/motd/config.yml (fallback - global config)
-# 3. Environment variables (legacy fallback)
-#
-# For migration from environment variables, run: ./motd -migrate-config
 # =============================================================================
 
 # =============================================================================
