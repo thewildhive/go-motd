@@ -1043,7 +1043,7 @@ func handleSelfUpdate() {
 }
 
 func getLatestRelease() (*GitHubRelease, error) {
-	url := "https://api.github.com/repos/calmcacil/go-motd/releases/latest"
+	url := "https://api.github.com/repos/thewildhive/go-motd/releases/latest"
 
 	resp, err := httpClient.Get(url)
 	if err != nil {

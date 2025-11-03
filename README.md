@@ -152,14 +152,14 @@ Self-update supports the same platforms as the releases:
 
 #### Option 1: Download Pre-built Binary (Recommended)
 
-1. Go to the [Releases page](https://github.com/calmcacil/go-motd/releases)
+1. Go to the [Releases page](https://github.com/thewildhive/go-motd/releases)
 2. Download the appropriate binary for your system
 3. Extract and install to `/usr/local/bin/`
 
 #### Option 2: Build from Source
 
 ```bash
-git clone https://github.com/calmcacil/go-motd.git
+git clone https://github.com/thewildhive/go-motd.git
 cd go-motd
 make install
 ```

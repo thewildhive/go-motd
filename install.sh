@@ -76,7 +76,7 @@ detect_platform() {
 
 # Function to get latest release version
 get_latest_version() {
-    local api_url="https://api.github.com/repos/calmcacil/go-motd/releases/latest"
+    local api_url="https://api.github.com/repos/thewildhive/go-motd/releases/latest"
     local version
     
     if command -v curl >/dev/null 2>&1; then
@@ -101,7 +101,7 @@ install_motd() {
     local version="$1"
     local platform="$2"
     local filename="motd-${version}-${platform}.tar.gz"
-    local download_url="https://github.com/calmcacil/go-motd/releases/download/v${version}/${filename}"
+    local download_url="https://github.com/thewildhive/go-motd/releases/download/v${version}/${filename}"
     local temp_dir=$(mktemp -d)
     
     print_info "Downloading motd v${version} for ${platform}..."
@@ -157,7 +157,7 @@ create_sample_config() {
                 sudo mkdir -p "$CONFIG_DIR"
                 sudo tee "$config_file" > /dev/null << 'EOF'
 # motd configuration
-# See https://github.com/calmcacil/go-motd for more options
+# See https://github.com/thewildhive/go-motd for more options
 
 title: "Welcome!"
 sections:
@@ -177,7 +177,7 @@ EOF
             mkdir -p "$CONFIG_DIR"
             cat > "$config_file" << 'EOF'
 # motd configuration
-# See https://github.com/calmcacil/go-motd for more options
+# See https://github.com/thewildhive/go-motd for more options
 
 title: "Welcome!"
 sections:
@@ -221,7 +221,7 @@ main() {
     echo "  $INSTALL_DIR/motd -c /path/to/config  # Run with custom config"
     echo
     print_info "Configuration directory: $CONFIG_DIR"
-    print_info "For more information: https://github.com/calmcacil/go-motd"
+    print_info "For more information: https://github.com/thewildhive/go-motd"
 }
 
 # Check if running with --help flag

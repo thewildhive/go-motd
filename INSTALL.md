@@ -6,7 +6,7 @@ This guide covers multiple ways to install and configure the MOTD (Message of th
 
 ### Option 1: Download Pre-built Binary (Recommended)
 
-1. **Go to the [Releases page](https://github.com/calmcacil/go-motd/releases)**
+1. **Go to the [Releases page](https://github.com/thewildhive/go-motd/releases)**
 2. **Download the appropriate binary for your system:**
    - Linux: `motd-VERSION-linux-amd64.tar.gz` (Intel/AMD) or `motd-VERSION-linux-arm64.tar.gz` (ARM)
    - macOS: `motd-VERSION-darwin-amd64.tar.gz` (Intel) or `motd-VERSION-darwin-arm64.tar.gz` (Apple Silicon)
@@ -28,7 +28,7 @@ This guide covers multiple ways to install and configure the MOTD (Message of th
 
 ```bash
 # Clone the repository
-git clone https://github.com/calmcacil/go-motd.git
+git clone https://github.com/thewildhive/go-motd.git
 cd go-motd
 
 # Build and install
@@ -252,9 +252,9 @@ sudo update-motd
 
 ## Getting Help
 
-- **GitHub Issues**: [Report bugs or request features](https://github.com/calmcacil/go-motd/issues)
-- **Documentation**: [Full README](https://github.com/calmcacil/go-motd/blob/main/README.md)
-- **Releases**: [Download latest versions](https://github.com/calmcacil/go-motd/releases)
+- **GitHub Issues**: [Report bugs or request features](https://github.com/thewildhive/go-motd/issues)
+- **Documentation**: [Full README](https://github.com/thewildhive/go-motd/blob/main/README.md)
+- **Releases**: [Download latest versions](https://github.com/thewildhive/go-motd/releases)
 
 ## Advanced Usage
 
@@ -292,7 +292,7 @@ crontab -e
 
 ```bash
 # Clone the repository
-git clone https://github.com/calmcacil/go-motd.git
+git clone https://github.com/thewildhive/go-motd.git
 cd go-motd
 
 # Build and install
@@ -502,9 +502,9 @@ sudo update-motd
 
 ## Getting Help
 
-- **GitHub Issues**: [Report bugs or request features](https://github.com/calmcacil/go-motd/issues)
-- **Documentation**: [Full README](https://github.com/calmcacil/go-motd/blob/main/README.md)
-- **Releases**: [Download latest versions](https://github.com/calmcacil/go-motd/releases)
+- **GitHub Issues**: [Report bugs or request features](https://github.com/thewildhive/go-motd/issues)
+- **Documentation**: [Full README](https://github.com/thewildhive/go-motd/blob/main/README.md)
+- **Releases**: [Download latest versions](https://github.com/thewildhive/go-motd/releases)
 
 ## Advanced Usage
 
