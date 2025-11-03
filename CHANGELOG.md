@@ -1,3 +1,10 @@
+## [0.3.0](https://github.com/calmcacil/go-motd/compare/v0.2.0...v0.3.0) (2025-11-03)
+
+
+### Features
+
+* add workflow_dispatch trigger for manual releases ([188f8fc](https://github.com/calmcacil/go-motd/commit/188f8fccf7bae0147b5de92df7fc440b99037c76))
+
 ## 1.0.0 (2025-11-03)
 
 
