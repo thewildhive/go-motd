@@ -1,3 +1,10 @@
+## [0.3.3](https://github.com/thewildhive/go-motd/compare/v0.3.2...v0.3.3) (2025-11-03)
+
+
+### Bug Fixes
+
+* ensure build job gets latest tag for version detection ([86492c9](https://github.com/thewildhive/go-motd/commit/86492c91ba90238b7a4dd63cf83164e6f63cce6c))
+
 ## [0.3.2](https://github.com/thewildhive/go-motd/compare/v0.3.1...v0.3.2) (2025-11-03)
 
 
