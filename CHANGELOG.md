@@ -1,3 +1,12 @@
+## [0.3.2](https://github.com/thewildhive/go-motd/compare/v0.3.1...v0.3.2) (2025-11-03)
+
+
+### Bug Fixes
+
+* improve workflow automation documentation ([b260943](https://github.com/thewildhive/go-motd/commit/b26094338e44c31dd9c6962ddaaed644e4826faa))
+* prevent chore(release) commits from triggering workflow ([e063676](https://github.com/thewildhive/go-motd/commit/e063676c507029ea54756ea3f010cad8eae14eb5))
+* update semantic-release config for proper versioning ([0529ef8](https://github.com/thewildhive/go-motd/commit/0529ef88c64c57889d47efc1fe2928208bd24755))
+
 ## [0.3.1](https://github.com/thewildhive/go-motd/compare/v0.3.0...v0.3.1) (2025-11-03)
 
 
