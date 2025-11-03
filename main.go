@@ -21,7 +21,7 @@ import (
 )
 
 const (
-	VERSION         = "0.5.2"
+	VERSION         = "0.5.3"
 	CURL_TIMEOUT    = 5 * time.Second
 	DOT_LABEL_WIDTH = 22
 )
