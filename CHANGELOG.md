@@ -1,3 +1,10 @@
+## [0.4.0](https://github.com/calmcacil/go-motd/compare/v0.3.0...v0.4.0) (2025-11-03)
+
+
+### Features
+
+* add automated install script for GitHub releases ([065db80](https://github.com/calmcacil/go-motd/commit/065db8036629f2b1bfdd9c952dcd8d31ec6ba784))
+
 ## [0.3.0](https://github.com/calmcacil/go-motd/compare/v0.2.2...v0.3.0) (2025-11-03)
 
 
