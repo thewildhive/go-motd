@@ -1,3 +1,5 @@
+## [0.4.2](https://github.com/calmcacil/go-motd/compare/v0.4.1...v0.4.2) (2025-11-03)
+
 ## [0.4.1](https://github.com/calmcacil/go-motd/compare/v0.4.0...v0.4.1) (2025-11-03)
 
 
