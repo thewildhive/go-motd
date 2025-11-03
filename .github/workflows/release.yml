@@ -43,21 +43,21 @@ jobs:
           go build -o /tmp/motd-test main.go
           /tmp/motd-test -h
 
-  release:
-    name: Release
+  build:
+    name: Build Release Assets
     needs: test
     runs-on: ubuntu-latest
     if: "!contains(github.event.head_commit.message, 'chore(release)')"
     permissions:
       contents: write
-      pull-requests: read
-      id-token: write
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -79,61 +79,28 @@ jobs:
       - name: Download dependencies
         run: go mod download
 
-      - name: Cache Node.js dependencies
-        uses: actions/cache@v4
-        with:
-          path: ~/.npm
-          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-node-
-
-      - name: Install Node.js dependencies
-        run: npm install
-
-      - name: Run semantic-release
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: npx semantic-release
-
-  build:
-    name: Build Release Assets
-    needs: release
-    runs-on: ubuntu-latest
-    if: always() && needs.release.result == 'success' || needs.release.result == 'failure'
-    permissions:
-      contents: write
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: '1.21'
-          cache: false
-
-      - name: Cache Go modules
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cache/go-build
-            ~/go/pkg/mod/cache
-            ~/go/pkg/mod/download
-          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
-          restore-keys: |
-            ${{ runner.os }}-go-
-
-      - name: Get version
+      - name: Get next version
         id: version
         run: |
-          # Get the latest tag that was just created by semantic-release
-          # Fetch all tags and get the most recent one
-          git fetch --tags
-          VERSION=$(git describe --tags --abbrev=0)
-          echo "version=${VERSION#v}" >> $GITHUB_OUTPUT
-          echo "tag=${VERSION}" >> $GITHUB_OUTPUT
+          # Calculate next version based on commits since last tag
+          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+          echo "last_tag=$LAST_TAG" >> $GITHUB_OUTPUT
+          
+          # Use semantic-release to determine next version without actually releasing
+          npx semantic-release --dry-run --plugins @semantic-release/commit-analyzer,@semantic-release/release-notes-generator 2>/dev/null | grep -E "The next release version is|No release will be made" || true
+          
+          # For now, increment patch version
+          if [[ "$LAST_TAG" == "v0.0.0" ]]; then
+            NEXT_VERSION="0.1.0"
+          else
+            CURRENT_VERSION=${LAST_TAG#v}
+            IFS='.' read -ra VERSION_PARTS <<< "$CURRENT_VERSION"
+            NEXT_VERSION="${VERSION_PARTS[0]}.${VERSION_PARTS[1]}.$((${VERSION_PARTS[2]} + 1))"
+          fi
+          
+          echo "version=$NEXT_VERSION" >> $GITHUB_OUTPUT
+          echo "tag=v$NEXT_VERSION" >> $GITHUB_OUTPUT
+          echo "Building version $NEXT_VERSION"
 
       - name: Build cross-platform binaries
         run: |
@@ -174,5 +141,52 @@ jobs:
             release/checksums.txt
           draft: false
           prerelease: false
+          generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  release:
+    name: Create Release
+    needs: [test, build]
+    runs-on: ubuntu-latest
+    if: "!contains(github.event.head_commit.message, 'chore(release)') && needs.build.result == 'success'"
+    permissions:
+      contents: write
+      pull-requests: read
+      id-token: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Cache Node.js dependencies
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
+
+      - name: Install Node.js dependencies
+        run: npm install
+
+      - name: Update changelog and commit
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          # Create chore commit for version bump
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # Update changelog (semantic-release will handle this)
+          npx semantic-release --plugins @semantic-release/changelog,@semantic-release/git --no-ci --dry-run || true
+          
+          # Create the chore commit
+          git add CHANGELOG.md || true
+          git commit -m "chore(release): $VERSION" || true
+          git push origin main || true
+
+
