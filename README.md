@@ -44,15 +44,11 @@ Options:
   -h              Show this help message
   -v              Show version information
   -d              Enable debug mode
-  -migrate-config Migrate environment variables to YAML config file
 ```
 
 ## Configuration
 
-The application supports configuration in the following priority order:
-
-1. **YAML Configuration Files** (highest priority)
-2. **Environment Variables** (legacy fallback)
+The application supports configuration via YAML configuration files.
 
 ### YAML Configuration
 
@@ -98,33 +94,7 @@ system:
   tank_mount: "/mnt/tank"
 ```
 
-#### Migration from Environment Variables
 
-If you're currently using environment variables, you can migrate to YAML configuration:
-
-```bash
-# Set your environment variables as usual
-export PLEX_URL="http://plex:32400"
-export PLEX_TOKEN="your-token"
-export SONARR_URL="http://sonarr:8989"
-export SONARR_API_KEY="your-api-key"
-
-# Run migration command
-./motd -migrate-config
-```
-
-This will create `~/.config/motd/config.yml` with your current configuration and create a backup if the file already exists.
-
-### Environment Variables (Legacy)
-
-- `ENV_FILE` - Path to environment file (default: `/opt/apps/compose/.env`)
-- `PLEX_URL`, `PLEX_TOKEN` - Plex server configuration
-- `JELLYFIN_URL`, `JELLYFIN_TOKEN` - Jellyfin server configuration
-- `SONARR_URL`, `SONARR_API_KEY` - Sonarr configuration
-- `RADARR_URL`, `RADARR_API_KEY` - Radarr configuration
-- `ORGANIZR_URL`, `ORGANIZR_API_KEY` - Organizr configuration
-- `TANK_MOUNT` - Tank mount point (default: `/mnt/tank`)
-- `COMPOSEDIR` - Compose directory (default: `/opt/apps/compose`)
 
 ## Technical Details
 

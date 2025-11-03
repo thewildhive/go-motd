@@ -123,46 +123,7 @@ system:
     interface: "enp7s0"
 ```
 
-### Option 2: Environment Variables (Legacy)
 
-You can also use environment variables. Create a `.env` file:
-
-```bash
-# Media Services
-PLEX_URL="http://plex:32400"
-PLEX_TOKEN="your-plex-token"
-JELLYFIN_URL="http://jellyfin:8096"
-JELLYFIN_TOKEN="your-jellyfin-token"
-SONARR_URL="http://sonarr:8989"
-SONARR_API_KEY="your-sonarr-api-key"
-RADARR_URL="http://radarr:7878"
-RADARR_API_KEY="your-radarr-api-key"
-ORGANIZR_URL="http://organizr:80"
-ORGANIZR_API_KEY="your-organizr-api-key"
-
-# System Configuration
-TANK_MOUNT="/mnt/tank"
-COMPOSEDIR="/opt/apps/compose"
-VNSTAT_INTERFACE="enp7s0"
-```
-
-Then load it in your shell profile:
-```bash
-echo 'source ~/.env' >> ~/.bashrc
-```
-
-### Migrate from Environment Variables to YAML
-
-If you're currently using environment variables, you can migrate to YAML:
-
-```bash
-# Set your environment variables
-export PLEX_URL="http://plex:32400"
-export PLEX_TOKEN="your-token"
-
-# Run migration
-motd -migrate-config
-```
 
 ## Optional Dependencies
 
