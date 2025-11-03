@@ -1,6 +1,6 @@
 {
   "branches": ["main"],
-  "repositoryUrl": "https://github.com/calmcacil/go-motd.git",
+  "repositoryUrl": "https://github.com/thewildhive/go-motd.git",
   "plugins": [
     "@semantic-release/commit-analyzer",
     "@semantic-release/release-notes-generator",
@@ -21,8 +21,6 @@
   ],
   "preset": "conventionalcommits",
   "tagFormat": "v${version}",
-  "branches": ["main"],
-  "repositoryUrl": "https://github.com/calmcacil/go-motd.git",
   "releaseRules": [
     {"type": "feat", "release": "minor"},
     {"type": "fix", "release": "patch"},
