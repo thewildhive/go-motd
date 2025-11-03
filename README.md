@@ -1,6 +1,6 @@
 # MOTD - Go Implementation
 
-A Go implementation of MOTD (Message of the Day) that displays system information, service status, and media service statistics.
+A Go implementation of MOTD (Message of the Day) that displays system information, service status, and media service statistics with improved workflow automation.
 
 ## Features
 
