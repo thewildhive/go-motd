@@ -1,0 +1,324 @@
+# =============================================================================
+# Go-MOTD Configuration File Sample
+# =============================================================================
+# This file contains all possible configuration options for the go-motd application.
+# Copy this file to config.yml and modify it according to your setup.
+#
+# Configuration Priority:
+# 1. ~/.config/motd/config.yml (highest priority - user config)
+# 2. /opt/motd/config.yml (fallback - global config)
+# 3. Environment variables (legacy fallback)
+#
+# For migration from environment variables, run: ./motd -migrate-config
+# =============================================================================
+
+# =============================================================================
+# SERVICES CONFIGURATION
+# =============================================================================
+# All services support multiple instances. Each service instance can be individually
+# enabled or disabled. Services will only be displayed if at least one instance
+# is configured with proper authentication credentials.
+# =============================================================================
+
+services:
+  # -------------------------------------------------------------------------
+  # Plex Media Server Configuration
+  # -------------------------------------------------------------------------
+  # Plex displays active streams, transcodes, and total bandwidth usage.
+  # Requires a valid Plex token for authentication.
+  #
+  # How to get Plex token:
+  # 1. Sign in to https://plex.tv
+  # 2. Go to https://plex.tv/claim
+  # 3. Copy the claim token (temporary) or get a permanent token from
+  #    account settings under "Authentication Tokens"
+  # -------------------------------------------------------------------------
+  plex:
+    # Example 1: Main Plex server
+    - name: "Main"                    # Display name for this instance
+      url: "http://plex:32400"        # Plex server URL (include port if not 80/443)
+      token: "your-plex-token-here"   # Plex authentication token
+      enabled: true                   # Enable/disable this instance
+
+    # Example 2: Backup Plex server (optional)
+    - name: "Backup"
+      url: "http://plex-backup:32400"
+      token: "your-backup-token-here"
+      enabled: false                  # Disabled by default
+
+    # Example 3: Remote Plex server (optional)
+    - name: "Remote"
+      url: "https://remote-plex.example.com"
+      token: "your-remote-token-here"
+      enabled: false
+
+  # -------------------------------------------------------------------------
+  # Jellyfin Media Server Configuration
+  # -------------------------------------------------------------------------
+  # Jellyfin displays active streams and transcodes.
+  # Requires an API token for authentication.
+  #
+  # How to get Jellyfin token:
+  # 1. Sign in to Jellyfin web interface
+  # 2. Go to Dashboard > API Keys
+  # 3. Create new API key
+  # -------------------------------------------------------------------------
+  jellyfin:
+    # Example 1: Main Jellyfin server
+    - name: "Main"
+      url: "http://jellyfin:8096"     # Jellyfin server URL
+      token: "your-jellyfin-token-here"  # Jellyfin API token
+      enabled: true
+
+    # Example 2: Alternative Jellyfin instance (optional)
+    - name: "Kids"
+      url: "http://jellyfin-kids:8097"
+      token: "your-kids-token-here"
+      enabled: false
+
+  # -------------------------------------------------------------------------
+  # Sonarr Configuration
+  # -------------------------------------------------------------------------
+  # Sonarr displays the number of missing episodes.
+  # Requires an API key for authentication.
+  #
+  # How to get Sonarr API key:
+  # 1. Go to Sonarr web interface
+  # 2. Settings > General > Security
+  # 3. Copy API Key or generate new one
+  # -------------------------------------------------------------------------
+  sonarr:
+    # Example 1: Main Sonarr instance (HD content)
+    - name: "HD"
+      url: "http://sonarr:8989"       # Sonarr URL
+      api_key: "your-sonarr-api-key-here"  # Sonarr API key
+      enabled: true
+
+    # Example 2: 4K Sonarr instance (optional)
+    - name: "4K"
+      url: "http://sonarr-4k:8990"
+      api_key: "your-4k-sonarr-api-key-here"
+      enabled: false
+
+    # Example 3: Anime Sonarr instance (optional)
+    - name: "Anime"
+      url: "http://sonarr-anime:8991"
+      api_key: "your-anime-sonarr-api-key-here"
+      enabled: false
+
+  # -------------------------------------------------------------------------
+  # Radarr Configuration
+  # -------------------------------------------------------------------------
+  # Radarr displays the number of missing movies.
+  # Requires an API key for authentication.
+  #
+  # How to get Radarr API key:
+  # 1. Go to Radarr web interface
+  # 2. Settings > General > Security
+  # 3. Copy API Key or generate new one
+  # -------------------------------------------------------------------------
+  radarr:
+    # Example 1: Main Radarr instance (HD content)
+    - name: "HD"
+      url: "http://radarr:7878"       # Radarr URL
+      api_key: "your-radarr-api-key-here"  # Radarr API key
+      enabled: true
+
+    # Example 2: 4K Radarr instance (optional)
+    - name: "4K"
+      url: "http://radarr-4k:7879"
+      api_key: "your-4k-radarr-api-key-here"
+      enabled: false
+
+    # Example 3: Classic Movies Radarr instance (optional)
+    - name: "Classic"
+      url: "http://radarr-classic:7880"
+      api_key: "your-classic-radarr-api-key-here"
+      enabled: false
+
+  # -------------------------------------------------------------------------
+  # Organizr Configuration
+  # -------------------------------------------------------------------------
+  # Organizr displays the number of pending requests.
+  # Requires an API key for authentication.
+  #
+  # How to get Organizr API key:
+  # 1. Go to Organizr admin interface
+  # 2. Settings > API
+  # 3. Generate new API key
+  # -------------------------------------------------------------------------
+  organizr:
+    # Example 1: Main Organizr instance
+    - name: "Main"
+      url: "http://organizr:80"       # Organizr URL
+      api_key: "your-organizr-api-key-here"  # Organizr API key
+      enabled: true
+
+    # Example 2: Family Organizr instance (optional)
+    - name: "Family"
+      url: "http://organizr-family:81"
+      api_key: "your-family-organizr-api-key-here"
+      enabled: false
+
+# =============================================================================
+# SYSTEM CONFIGURATION
+# =============================================================================
+# System settings control various aspects of system monitoring and display.
+# All system settings are optional and have sensible defaults.
+# =============================================================================
+
+system:
+  # -------------------------------------------------------------------------
+  # Docker Compose Directory
+  # -------------------------------------------------------------------------
+  # Path to the directory containing your docker-compose.yml files.
+  # Used for displaying Docker container information.
+  # Default: "/opt/apps/compose"
+  # -------------------------------------------------------------------------
+  compose_dir: "/opt/apps/compose"
+
+  # -------------------------------------------------------------------------
+  # Tank Mount Point
+  # -------------------------------------------------------------------------
+  # Mount point for your main storage/array (often used in NAS setups).
+  # Used for displaying disk usage statistics.
+  # Default: "/mnt/tank"
+  # -------------------------------------------------------------------------
+  tank_mount: "/mnt/tank"
+
+  # -------------------------------------------------------------------------
+  # Network Configuration
+  # -------------------------------------------------------------------------
+  # Settings for network bandwidth monitoring using vnstat.
+  # This section is entirely optional - if not specified, the application will
+  # attempt to auto-detect the default network interface.
+  # Bandwidth is always displayed as monthly data with 30-day estimates.
+  # -------------------------------------------------------------------------
+  network:
+    # Network interface to monitor for bandwidth statistics.
+    # Examples: "eth0", "enp0s3", "ens33", "en0", "wlan0", "wlp2s0"
+    # If not specified, the application will auto-detect the default interface.
+    # Default: auto-detect
+    interface: "eth0"
+
+# =============================================================================
+# ADVANCED CONFIGURATION EXAMPLES
+# =============================================================================
+# Below are some common configuration scenarios for reference.
+# Uncomment and modify as needed.
+# =============================================================================
+
+# -------------------------------------------------------------------------
+# Example 1: Minimal Configuration (only system info)
+# -------------------------------------------------------------------------
+# services:
+#   plex: []
+#   jellyfin: []
+#   sonarr: []
+#   radarr: []
+#   organizr: []
+# 
+# system:
+#   compose_dir: "/opt/apps/compose"
+#   tank_mount: "/mnt/tank"
+
+# -------------------------------------------------------------------------
+# Example 2: Media Server Heavy Setup
+# -------------------------------------------------------------------------
+# services:
+#   plex:
+#     - name: "Main"
+#       url: "http://plex:32400"
+#       token: "plex-token"
+#       enabled: true
+#     - name: "Backup"
+#       url: "http://plex-backup:32400"
+#       token: "backup-token"
+#       enabled: true
+#   jellyfin:
+#     - name: "Main"
+#       url: "http://jellyfin:8096"
+#       token: "jellyfin-token"
+#       enabled: true
+#   sonarr:
+#     - name: "HD"
+#       url: "http://sonarr:8989"
+#       api_key: "sonarr-key"
+#       enabled: true
+#     - name: "4K"
+#       url: "http://sonarr-4k:8990"
+#       api_key: "sonarr-4k-key"
+#       enabled: true
+#   radarr:
+#     - name: "HD"
+#       url: "http://radarr:7878"
+#       api_key: "radarr-key"
+#       enabled: true
+#     - name: "4K"
+#       url: "http://radarr-4k:7879"
+#       api_key: "radarr-4k-key"
+#       enabled: true
+#   organizr:
+#     - name: "Main"
+#       url: "http://organizr:80"
+#       api_key: "organizr-key"
+#       enabled: true
+# 
+# system:
+#   compose_dir: "/opt/apps/compose"
+#   tank_mount: "/mnt/tank"
+#   network:
+#     interface: "bond0"
+
+# -------------------------------------------------------------------------
+# Example 3: Development/Test Environment
+# -------------------------------------------------------------------------
+# services:
+#   plex:
+#     - name: "Dev"
+#       url: "http://localhost:32400"
+#       token: "dev-token"
+#       enabled: true
+#   jellyfin: []
+#   sonarr: []
+#   radarr: []
+#   organizr: []
+# 
+# system:
+#   compose_dir: "/home/user/docker"
+#   tank_mount: "/home/user/storage"
+#   network:
+#     interface: "wlp2s0"  # WiFi interface on laptop
+
+# =============================================================================
+# TROUBLESHOOTING
+# =============================================================================
+# 
+# 1. Services not showing up?
+#    - Verify the service is enabled: true
+#    - Check that authentication credentials (token/api_key) are correct
+#    - Ensure URLs are accessible from the machine running motd
+#    - Run with debug mode: ./motd -d
+# 
+# 2. Bandwidth not showing?
+#    - Install vnstat: sudo apt install vnstat (Ubuntu/Debian)
+#    - Initialize vnstat database: sudo vnstat -u -i eth0
+#    - Check interface name with: ip link show
+#    - Verify interface is configured correctly in this file
+#    - Bandwidth is always displayed as monthly data with 30-day estimates
+# 
+# 3. Docker containers not showing?
+#    - Install Docker and ensure user has permissions
+#    - Verify compose_dir path is correct
+#    - Check that docker ps works manually
+# 
+# 4. Disk usage not showing for tank?
+#    - Verify tank_mount path exists and is mounted
+#    - Check with: df -h /mnt/tank (or your path)
+#    - Ensure mount point is accessible
+# 
+# 5. Temperature not showing?
+#    - Install lm-sensors: sudo apt install lm-sensors
+#    - Run sensor detection: sudo sensors-detect
+#    - Verify with: sensors command
+# =============================================================================

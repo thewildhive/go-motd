@@ -1,0 +1,12 @@
+services:
+  plex: []
+  jellyfin: []
+  sonarr: []
+  radarr: []
+  organizr: []
+
+system:
+  compose_dir: "/opt/apps/compose"
+  tank_mount: "/mnt/tank"
+  network:
+    interface: "eth0"

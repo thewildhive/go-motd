@@ -56,6 +56,9 @@ type Config struct {
 	System struct {
 		ComposeDir string `yaml:"compose_dir"`
 		TankMount  string `yaml:"tank_mount"`
+		Network    struct {
+			Interface string `yaml:"interface,omitempty"`
+		} `yaml:"network,omitempty"`
 	} `yaml:"system"`
 }
 
@@ -157,7 +160,8 @@ Configuration Files:
 Environment Variables (legacy fallback):
   ENV_FILE, PLEX_URL, PLEX_TOKEN, JELLYFIN_URL, JELLYFIN_TOKEN,
   SONARR_URL, SONARR_API_KEY, RADARR_URL, RADARR_API_KEY,
-  ORGANIZR_URL, ORGANIZR_API_KEY, TANK_MOUNT, COMPOSEDIR`)
+  ORGANIZR_URL, ORGANIZR_API_KEY, TANK_MOUNT, COMPOSEDIR,
+  VNSTAT_INTERFACE`)
 }
 
 func debugLog(msg string, args ...interface{}) {
@@ -251,6 +255,7 @@ func loadLegacyConfig() Config {
 	// Set system configuration
 	legacyConfig.System.ComposeDir = getEnv("COMPOSEDIR", "/opt/apps/compose")
 	legacyConfig.System.TankMount = getEnv("TANK_MOUNT", "/mnt/tank")
+	legacyConfig.System.Network.Interface = getEnv("VNSTAT_INTERFACE", "")
 
 	debugLog("Loaded legacy config from environment variables")
 	return legacyConfig
@@ -284,7 +289,8 @@ func migrateToYAML() {
 		len(legacyConfig.Services.Organizr) > 0
 
 	hasSystemConfig := legacyConfig.System.ComposeDir != "/opt/apps/compose" ||
-		legacyConfig.System.TankMount != "/mnt/tank"
+		legacyConfig.System.TankMount != "/mnt/tank" ||
+		legacyConfig.System.Network.Interface != ""
 
 	if !hasServices && !hasSystemConfig {
 		fmt.Printf("%sNo meaningful configuration found to migrate. Using default values.%s\n", YELLOW, RESET)
@@ -359,7 +365,17 @@ func migrateToYAML() {
 		fmt.Printf("%s\n", strings.Join(services, ", "))
 	}
 	if hasSystemConfig {
-		fmt.Printf("  System: ComposeDir=%s, TankMount=%s\n", legacyConfig.System.ComposeDir, legacyConfig.System.TankMount)
+		systemParts := []string{}
+		if legacyConfig.System.ComposeDir != "/opt/apps/compose" {
+			systemParts = append(systemParts, fmt.Sprintf("ComposeDir=%s", legacyConfig.System.ComposeDir))
+		}
+		if legacyConfig.System.TankMount != "/mnt/tank" {
+			systemParts = append(systemParts, fmt.Sprintf("TankMount=%s", legacyConfig.System.TankMount))
+		}
+		if legacyConfig.System.Network.Interface != "" {
+			systemParts = append(systemParts, fmt.Sprintf("Interface=%s", legacyConfig.System.Network.Interface))
+		}
+		fmt.Printf("  System: %s\n", strings.Join(systemParts, ", "))
 	}
 }
 
@@ -545,29 +561,57 @@ func showBandwidth() {
 		return
 	}
 
-	output, err := exec.Command("vnstat", "--oneline", "b").Output()
-	if err != nil || strings.Contains(string(output), "no data available") {
+	// Determine which interface to use
+	interfaceName := config.System.Network.Interface
+	if interfaceName == "" {
+		interfaceName = "enp7s0" // fallback as specified in requirements
+	}
+
+	// Always use monthly data with 30-day estimates (hardcoded)
+	output, err := exec.Command("vnstat", "--json", "m", interfaceName).Output()
+	if err != nil {
 		return
 	}
 
-	parts := strings.Split(string(output), ";")
-	if len(parts) >= 5 {
-		rx, tx := parts[9], parts[10]
-
-		rxVal, _ := strconv.ParseFloat(rx, 64)
-		txVal, _ := strconv.ParseFloat(tx, 64)
-
-		rxGB := rxVal / 1073741824.0
-		txGB := txVal / 1073741824.0
-
-		rxEst := (rxVal / 1073741824.0) * (30.0 / float64(time.Now().Day()))
-		txEst := (txVal / 1073741824.0) * (30.0 / float64(time.Now().Day()))
-
-		dotLabel("Bandwidth (rx)")
-		fmt.Printf("%s%.2f GB / %.2f GB est%s\n", BLUE, rxGB, rxEst, RESET)
-		dotLabel("Bandwidth (tx)")
-		fmt.Printf("%s%.2f GB / %.2f GB est%s\n", BLUE, txGB, txEst, RESET)
+	var data struct {
+		Interfaces []struct {
+			ID      string `json:"id"`
+			Traffic struct {
+				Month []struct {
+					Rx   uint64 `json:"rx"`
+					Tx   uint64 `json:"tx"`
+					Date struct {
+						Year  int `json:"year"`
+						Month int `json:"month"`
+					} `json:"date"`
+				} `json:"month"`
+			} `json:"traffic"`
+		} `json:"interfaces"`
 	}
+
+	if err := json.Unmarshal(output, &data); err != nil {
+		return
+	}
+
+	if len(data.Interfaces) == 0 || len(data.Interfaces[0].Traffic.Month) == 0 {
+		return
+	}
+
+	// Take the latest month entry
+	month := data.Interfaces[0].Traffic.Month[len(data.Interfaces[0].Traffic.Month)-1]
+
+	rxGB := float64(month.Rx) / 1073741824.0
+	txGB := float64(month.Tx) / 1073741824.0
+
+	// Estimate for 30‑day month (always using monthly data)
+	day := float64(time.Now().Day())
+	rxEst := rxGB * (30.0 / day)
+	txEst := txGB * (30.0 / day)
+
+	dotLabel("Bandwidth (rx)")
+	fmt.Printf("%s%.2f GB / %.2f GB est%s\n", BLUE, rxGB, rxEst, RESET)
+	dotLabel("Bandwidth (tx)")
+	fmt.Printf("%s%.2f GB / %.2f GB est%s\n", BLUE, txGB, txEst, RESET)
 }
 
 func showUser() {
@@ -1054,4 +1098,65 @@ func hasFiglet() bool {
 
 func hasLolcat() bool {
 	return hasCommand("lolcat")
+}
+
+// getDefaultInterface attempts to detect the default network interface
+func getDefaultInterface() string {
+	// Try multiple methods to find the default interface
+
+	// Method 1: Use ip route to find default route
+	if output, err := exec.Command("ip", "route", "show", "default").Output(); err == nil {
+		lines := strings.Split(strings.TrimSpace(string(output)), "\n")
+		for _, line := range lines {
+			if strings.Contains(line, "default via") {
+				fields := strings.Fields(line)
+				for i, field := range fields {
+					if field == "dev" && i+1 < len(fields) {
+						return fields[i+1]
+					}
+				}
+			}
+		}
+	}
+
+	// Method 2: Use route command (older systems)
+	if output, err := exec.Command("route", "-n").Output(); err == nil {
+		lines := strings.Split(strings.TrimSpace(string(output)), "\n")
+		for _, line := range lines {
+			if strings.HasPrefix(line, "0.0.0.0") || strings.HasPrefix(line, "default") {
+				fields := strings.Fields(line)
+				if len(fields) >= 8 {
+					return fields[7] // Interface name is usually the 8th field
+				}
+			}
+		}
+	}
+
+	// Method 3: Fall back to common interface names
+	commonInterfaces := []string{"eth0", "enp0s3", "ens33", "en0", "wlan0", "wlp2s0"}
+	for _, iface := range commonInterfaces {
+		if output, err := exec.Command("ip", "link", "show", iface).Output(); err == nil {
+			if strings.Contains(string(output), "state UP") {
+				return iface
+			}
+		}
+	}
+
+	// Method 4: Get first non-loopback interface
+	if output, err := exec.Command("ip", "link", "show").Output(); err == nil {
+		lines := strings.Split(string(output), "\n")
+		for _, line := range lines {
+			if strings.Contains(line, "state UP") && !strings.Contains(line, "lo:") {
+				fields := strings.Fields(line)
+				if len(fields) >= 2 {
+					ifaceName := strings.TrimSuffix(fields[1], ":")
+					if ifaceName != "lo" {
+						return ifaceName
+					}
+				}
+			}
+		}
+	}
+
+	return ""
 }
