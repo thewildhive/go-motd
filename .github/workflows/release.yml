@@ -67,12 +67,13 @@ jobs:
       - name: Download dependencies
         run: go mod download
 
+      - name: Install Node.js dependencies
+        run: npm install
+
       - name: Run semantic-release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          npm install -g semantic-release
-          npx semantic-release
+        run: npx semantic-release
 
   build:
     name: Build Release Assets
