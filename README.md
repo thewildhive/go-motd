@@ -138,9 +138,26 @@ This will create `~/.config/motd/config.yml` with your current configuration and
 
 ## Installation
 
+### Quick Install
+
+📖 **For detailed installation instructions, see [INSTALL.md](INSTALL.md)**
+
+#### Option 1: Download Pre-built Binary (Recommended)
+1. Go to the [Releases page](https://github.com/calmcacil/go-motd/releases)
+2. Download the appropriate binary for your system
+3. Extract and install to `/usr/local/bin/`
+
+#### Option 2: Build from Source
+```bash
+git clone https://github.com/calmcacil/go-motd.git
+cd go-motd
+make install
+```
+
+### Manual Installation
 1. Build the binary
 2. Copy to `/usr/local/bin/` or another location in your PATH
-3. Set up environment variables or `.env` file
+3. Set up environment variables or YAML configuration
 4. Run `motd` on login by adding to your shell profile
 
 ```bash
@@ -152,6 +169,23 @@ sudo cp bin/motd /usr/local/bin/
 sudo chmod +x /usr/local/bin/motd
 ```
 
+## Automated Releases
+
+This project uses **semantic-release** for automatic versioning and releases:
+
+- **Automatic versioning** based on commit messages
+- **Cross-platform binaries** generated for each release
+- **Changelog** automatically generated
+- **GitHub releases** created with all assets
+
+### Commit Convention
+Follow [Conventional Commits](https://www.conventionalcommits.org/) for automatic releases:
+- `feat:` - New features (minor version)
+- `fix:` - Bug fixes (patch version)
+- `docs:` - Documentation changes (patch version)
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for detailed guidelines.
+
 ## Cross-Compilation
 
 Build for different platforms (outputs to `bin/` directory):
@@ -159,6 +193,12 @@ Build for different platforms (outputs to `bin/` directory):
 ```bash
 # Build all platforms
 make cross-compile
+
+# Create release packages with version info
+make package
+
+# Full release process
+make release
 
 # Or manually for specific platforms:
 mkdir -p bin

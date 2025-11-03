@@ -6,7 +6,7 @@ GO=go
 LDFLAGS=-ldflags="-s -w"
 INSTALL_PATH=/usr/local/bin
 
-.PHONY: all build build-optimized clean test install uninstall cross-compile help
+.PHONY: all build build-optimized clean test install uninstall cross-compile checksums package release help
 
 all: build-optimized
 
@@ -60,6 +60,39 @@ cross-compile:
 	@echo "Cross-compilation complete"
 	@ls -lh $(BIN_DIR)/$(BINARY_NAME)-*
 
+# Generate checksums for release assets
+checksums:
+	@echo "Generating checksums..."
+	@cd $(BIN_DIR) && sha256sum * > checksums.txt
+	@echo "Checksums generated: $(BIN_DIR)/checksums.txt"
+
+# Package release assets
+package: clean
+	@echo "Creating release packages..."
+	@mkdir -p $(BIN_DIR)/release
+	@VERSION=$$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.1.0"); \
+	VERSION=$$(echo $$VERSION | sed 's/^v//'); \
+	echo "Building version $$VERSION"; \
+	for os in linux-amd64 linux-arm64 darwin-amd64 darwin-arm64 windows-amd64; do \
+		os_name=$$(echo $$os | cut -d- -f1); \
+		arch=$$(echo $$os | cut -d- -f2); \
+		if [ "$$os_name" = "windows" ]; then \
+			GOOS=$$os_name GOARCH=$$arch $(GO) build -ldflags="-s -w -X main.VERSION=$$VERSION" -o $(BIN_DIR)/release/motd-$$os.exe main.go; \
+			cd $(BIN_DIR)/release && zip motd-$$VERSION-$$os.zip motd-$$os.exe && rm motd-$$os.exe; \
+		else \
+			GOOS=$$os_name GOARCH=$$arch $(GO) build -ldflags="-s -w -X main.VERSION=$$VERSION" -o $(BIN_DIR)/release/motd-$$os main.go; \
+			cd $(BIN_DIR)/release && tar -czf motd-$$VERSION-$$os.tar.gz motd-$$os && rm motd-$$os; \
+		fi; \
+		cd -; \
+	done
+	@$(MAKE) checksums BIN_DIR=$(BIN_DIR)/release
+	@echo "Release packages created in $(BIN_DIR)/release/"
+	@ls -la $(BIN_DIR)/release/
+
+# Full release process (build, package, checksums)
+release: clean package
+	@echo "Release complete!"
+
 # Show help
 help:
 	@echo "MOTD Go Implementation - Makefile commands:"
@@ -72,4 +105,7 @@ help:
 	@echo "  make install         - Install to $(INSTALL_PATH)"
 	@echo "  make uninstall       - Remove from $(INSTALL_PATH)"
 	@echo "  make cross-compile   - Build for multiple platforms"
+	@echo "  make checksums       - Generate SHA256 checksums"
+	@echo "  make package         - Create release packages"
+	@echo "  make release         - Full release process"
 	@echo "  make help            - Show this help message"
