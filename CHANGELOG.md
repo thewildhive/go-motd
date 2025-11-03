@@ -1,3 +1,10 @@
+## [0.5.3](https://github.com/calmcacil/go-motd/compare/v0.5.2...v0.5.3) (2025-11-03)
+
+
+### Bug Fixes
+
+* add minor fix for testing release workflow ([33ec600](https://github.com/calmcacil/go-motd/commit/33ec6008c58570732216012fb9f69a1450bad88b))
+
 ## [0.5.2](https://github.com/calmcacil/go-motd/compare/v0.5.1...v0.5.2) (2025-11-03)
 
 
