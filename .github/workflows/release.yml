@@ -79,6 +79,34 @@ jobs:
       - name: Install Node.js dependencies
         run: npm install
 
+      - name: Update version in main.go
+        run: |
+          # Configure git user
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # Get next version from semantic-release dry-run
+          NEXT_VERSION=$(npx semantic-release --dry-run --no-ci 2>&1 | grep -oP 'The next release version is \K[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+          
+          # If no version detected, fallback to patch increment
+          if [ -z "$NEXT_VERSION" ]; then
+            CURRENT_VERSION=$(grep 'VERSION = ' main.go | grep -oP '"\K[0-9]+\.[0-9]+\.[0-9]+' | head -1)
+            if [ -z "$CURRENT_VERSION" ]; then
+              CURRENT_VERSION="0.1.0"
+            fi
+            NEXT_VERSION=$(echo $CURRENT_VERSION | awk -F. '{$3++; print $1"."$2"."$3}')
+          fi
+          
+          echo "Next version: $NEXT_VERSION"
+          
+          # Update VERSION constant in main.go
+          sed -i "s/VERSION = \".*\"/VERSION = \"$NEXT_VERSION\"/" main.go
+          
+          # Commit version change
+          git add main.go
+          git commit -m "chore: bump version to $NEXT_VERSION [skip ci]"
+          git push
+
       - name: Run semantic-release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
