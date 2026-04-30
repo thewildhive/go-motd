@@ -1,3 +1,14 @@
+## [1.0.0](https://github.com/thewildhive/go-motd/compare/v0.3.7...v1.0.0) (2026-04-30)
+
+
+### ⚠ BREAKING CHANGES
+
+* configuration is JSON-only and legacy YAML config files now fail fast instead of being accepted.
+
+### Features
+
+* refactor platform system info and release packaging ([5695bd8](https://github.com/thewildhive/go-motd/commit/5695bd8f3f7a82b552b33f2b16bf7164acbc6a77))
+
 ## [0.3.3](https://github.com/thewildhive/go-motd/compare/v0.3.2...v0.3.3) (2025-11-03)
 
 
