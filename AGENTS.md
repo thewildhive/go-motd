@@ -13,6 +13,11 @@
 - `gofmt -l .` - Check formatting
 - `golangci-lint run` - Run comprehensive linting
 
+## GitHub Workflow
+
+- Make future repository updates through pull requests instead of pushing directly to `main`.
+- Use short-lived feature branches, open a PR against `main`, and monitor CI before merge.
+
 ## Code Style Guidelines
 
 - Use standard Go formatting (`gofmt`)
