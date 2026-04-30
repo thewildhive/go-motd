@@ -32,6 +32,30 @@ go run . -h
 - README/INSTALL rewritten
 - installer updated for JSON sample generation
 
+## Entire Todo List (Snapshot)
+
+`[x]=done`, `[ ]=pending`, `[-]=blocked`
+
+- [x] lock scope and quality bar
+- [x] baseline behavior capture
+- [x] strict JSON config migration
+- [x] legacy YAML migration errors
+- [x] config path switch to `config.json`
+- [x] remove YAML module dependency
+- [x] remove Organizr support entirely
+- [x] add Seerr pending-request integration
+- [x] improve Sonarr/Radarr/Jellyfin/vnstat parsing reliability
+- [x] make `VERSION` linker-settable
+- [x] update installer for JSON schema
+- [x] rewrite/dedupe docs (README/INSTALL)
+- [x] add broad unit test coverage in `main_test.go`
+- [x] run `gofmt`, `go vet`, `go test`, `go build`
+- [-] run `go test -race ./...` (blocked locally: missing `gcc`/CGO toolchain)
+- [ ] reconcile and harden release pipeline (`.github/workflows/release.yml`, `.releaserc.json`)
+- [ ] final docs consistency sweep across remaining files
+- [ ] final no-`TODO`/`FIXME` scan after last edits
+- [ ] final scenario validation + handoff report
+
 ## Remaining Work
 
 1. Reconcile release system:
