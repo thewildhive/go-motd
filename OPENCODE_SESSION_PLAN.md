@@ -213,7 +213,7 @@ This section should be validated with `git status` in the new session. Based on 
 gofmt -l .
 go vet ./...
 go test ./...
-go build -o bin/motd main.go
+go build -buildvcs=false -o bin/motd .
 ```
 
 Race tests:
