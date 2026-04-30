@@ -1,3 +1,10 @@
+## [1.1.0](https://github.com/thewildhive/go-motd/compare/v1.0.0...v1.1.0) (2026-04-30)
+
+
+### Features
+
+* add legacy YAML config migration ([0157844](https://github.com/thewildhive/go-motd/commit/01578443b64f47208d4e91d22d35df1befcff6b4))
+
 ## [1.0.0](https://github.com/thewildhive/go-motd/compare/v0.3.7...v1.0.0) (2026-04-30)
 
 
