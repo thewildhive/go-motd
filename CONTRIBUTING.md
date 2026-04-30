@@ -24,8 +24,8 @@ This project uses [Conventional Commits](https://www.conventionalcommits.org/) t
 - `perf`: Performance improvements (creates a **minor** version)
 - `test`: Adding or updating tests (creates a **patch** version)
 - `build`: Build system or dependency changes (creates a **patch** version)
-- `ci`: CI/CD configuration changes (creates a **patch** version)
-- `chore`: Maintenance tasks (creates a **patch** version)
+- `ci`: CI/CD configuration changes (**no release** by default)
+- `chore`: Maintenance tasks (**no release** by default)
 
 ### Examples
 
@@ -39,14 +39,13 @@ test: add unit tests for bandwidth monitoring
 
 ## Release Process
 
-Releases are automatically created when commits are pushed to the `main` branch:
+Releases are automatically handled by the GitHub Actions release workflow on pushes to `main` (or manual dispatch):
 
-1. **Analyze commits**: Semantic-release analyzes commit messages
-2. **Determine version**: Based on commit types (feat=minor, fix=patch, etc.)
-3. **Create tag**: Git tag is created with new version
-4. **Generate changelog**: Automatic changelog is generated
-5. **Create release**: GitHub release is created with assets
-6. **Build binaries**: Cross-platform binaries are built and attached
+1. **Quality gates**: `gofmt`, `go test`, `go vet`, and `go build` run first.
+2. **Semantic versioning**: `semantic-release` analyzes Conventional Commit messages and decides whether to publish.
+3. **Tag and changelog**: On publish, `semantic-release` creates the `v<version>` tag, updates `CHANGELOG.md`, and pushes a `chore(release)` commit.
+4. **GitHub release**: `semantic-release` publishes release notes and creates the GitHub release entry.
+5. **Release assets**: The workflow builds cross-platform binaries with `-X main.VERSION=<version>`, packages archives, generates `checksums.txt`, and uploads assets to the same tag.
 
 ## Development Workflow
 
@@ -55,6 +54,8 @@ Releases are automatically created when commits are pushed to the `main` branch:
 3. Push your branch and create a pull request
 4. Once merged to `main`, a release will be automatically created
 
+Commit messages should follow the documented types so semantic-release can compute the correct version bump.
+
 ## Testing
 
 Before submitting a PR:
@@ -62,6 +63,9 @@ Before submitting a PR:
 ```bash
 # Run tests
 make test
+
+# Build and run help smoke test
+make smoke
 
 # Check formatting
 gofmt -l .

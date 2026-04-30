@@ -14,16 +14,24 @@ This guide covers installing and configuring `motd`.
 3. Extract and install:
 
 ```bash
-# Linux/macOS
+# Linux amd64
 tar -xzf motd-*-linux-amd64.tar.gz
 sudo mv motd-linux-amd64 /usr/local/bin/motd
+sudo chmod +x /usr/local/bin/motd
+```
+
+```bash
+# macOS Apple Silicon
+tar -xzf motd-*-darwin-arm64.tar.gz
+sudo mv motd-darwin-arm64 /usr/local/bin/motd
 sudo chmod +x /usr/local/bin/motd
 ```
 
 ```powershell
 # Windows (PowerShell)
 Expand-Archive motd-*-windows-amd64.zip
-Move-Item motd-windows-amd64.exe C:\ProgramData\chocolatey\bin\motd.exe
+New-Item -ItemType Directory -Force "$env:LOCALAPPDATA\Programs\motd" | Out-Null
+Move-Item motd-windows-amd64.exe "$env:LOCALAPPDATA\Programs\motd\motd.exe"
 ```
 
 ### Option 2: Build from Source
@@ -38,24 +46,26 @@ sudo chmod +x /usr/local/bin/motd
 
 ## Configuration
 
-`motd` now supports JSON config only.
+`motd` supports JSON config only. The config file is optional; without it, `motd` displays system information and skips media integrations.
 
 Config lookup order:
 1. `~/.config/motd/config.json`
 2. `/opt/motd/config.json`
 
+Use `motd -config /path/to/config.json` to load a specific file, or `motd -no-config` to force system-only output.
+
 Legacy YAML files (`config.yml` / `config.yaml`) are not supported and will trigger a migration error.
 
-Create config:
+Create a config only when you want media integrations or custom system paths:
 
 ```bash
 mkdir -p ~/.config/motd
 cp config.json.sample ~/.config/motd/config.json
 ```
 
-Then edit values for your environment.
+Then edit values for your environment. Media services are opt-in and each enabled instance must include a URL and token/API key.
 
-### Services Supported
+### Optional Media Services
 
 - Plex (`token`)
 - Jellyfin (`token`)
@@ -75,6 +85,8 @@ Optional commands used for richer output:
 - `sensors`
 - `docker`
 
+Windows system information uses PowerShell/CIM where possible and falls back to built-in commands such as `wmic` and `tasklist`. CPU temperature and bandwidth may be unavailable on Windows depending on sensor/collector support.
+
 Linux install example:
 
 ```bash
@@ -87,6 +99,7 @@ sudo apt install figlet lolcat vnstat lm-sensors docker.io
 motd -v
 motd -h
 motd -d
+motd -no-config
 ```
 
 ## Shell Integration
@@ -113,6 +126,8 @@ echo 'export PATH=$PATH:/usr/local/bin' >> ~/.bashrc
 ```
 
 ### Config Issues
+
+Missing config is valid and should still produce system information. If you expect media output, verify the JSON config exists and has enabled services:
 
 ```bash
 ls -la ~/.config/motd/config.json

@@ -4,10 +4,11 @@
 
 - `make build` - Build regular binary to bin/motd
 - `make build-optimized` - Build optimized binary with -ldflags="-s -w"
-- `make test` - Build and run basic test (shows help)
+- `make test` - Run `go test ./...`
+- `make smoke` - Build optimized binary and show help
 - `make clean` - Remove bin/ directory
 - `make cross-compile` - Build for all platforms
-- `go build -o motd main.go` - Direct build
+- `go build -buildvcs=false -o bin/motd .` - Direct build
 - `go vet ./...` - Run static analysis
 - `gofmt -l .` - Check formatting
 - `golangci-lint run` - Run comprehensive linting

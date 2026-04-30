@@ -6,7 +6,8 @@ A Go implementation of MOTD (Message of the Day) that displays system informatio
 
 - Fast execution from a single compiled binary
 - Built-in HTTP client with timeouts and connection reuse
-- Multi-instance media service support (Plex, Jellyfin, Sonarr, Radarr, Seerr)
+- System information on Linux, macOS, and Windows with platform-specific fallbacks
+- Optional multi-instance media service support (Plex, Jellyfin, Sonarr, Radarr, Seerr)
 - Self-update command with checksum verification
 - Cross-platform builds for Linux, macOS, and Windows
 
@@ -25,19 +26,21 @@ make build-optimized
 Direct Go build:
 
 ```bash
-mkdir -p bin && go build -o bin/motd main.go
-mkdir -p bin && go build -ldflags="-s -w" -o bin/motd main.go
+mkdir -p bin && go build -buildvcs=false -o bin/motd .
+mkdir -p bin && go build -buildvcs=false -ldflags="-s -w" -o bin/motd .
 ```
 
 ## Usage
 
 ```bash
-./motd [OPTIONS]
+./bin/motd [OPTIONS]
 
 Options:
   -h              Show this help message
   -v              Show version information
   -d              Enable debug mode
+  -config PATH    Load config from a specific JSON file
+  -no-config      Skip config loading and show system information only
 
 Commands:
   self-update     Update to the latest version from GitHub releases
@@ -46,11 +49,15 @@ Commands:
 
 ## Configuration
 
-Configuration is JSON-only.
+Configuration is JSON-only and optional. Without a config file, `motd` still displays system information and skips media integrations.
 
 Supported config paths (priority order):
 - `~/.config/motd/config.json`
 - `/opt/motd/config.json`
+
+Use `-config /path/to/config.json` to load a specific file, or `-no-config` to force system-only output.
+
+Create a config file only when you want media integrations or custom system paths such as `tank_mount` or a fixed network interface.
 
 If a legacy YAML config is detected (`config.yml`/`config.yaml`), `motd` exits with a migration message.
 
@@ -110,7 +117,13 @@ If a legacy YAML config is detected (`config.yml`/`config.yaml`), `motd` exits w
 }
 ```
 
-Use `config.json.sample` as the complete reference template.
+Use `config.json.sample` as the complete reference template. Media services are opt-in; each configured instance must be enabled and include both a URL and token/API key.
+
+## System Information
+
+`motd` displays core system information without config. Linux/macOS use standard Unix tools where available. Windows uses PowerShell/CIM first and falls back to WMIC/tasklist where possible.
+
+Windows temperature and bandwidth can be unavailable on many systems because thermal sensors and `vnstat` are not consistently exposed by default.
 
 ## Seerr Integration
 
@@ -129,6 +142,8 @@ Security properties:
 - SHA256 checksum verification
 - HTTPS-only downloads
 - Backup and rollback on update failure
+
+Release uploads include raw binaries for `self-update`, human-friendly archives for manual installs, and separate checksum files for raw binaries and archives.
 
 ## Installation
 
@@ -153,9 +168,10 @@ make package
 Manual examples:
 
 ```bash
-GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o bin/motd-linux-amd64 main.go
-GOOS=linux GOARCH=arm64 go build -ldflags="-s -w" -o bin/motd-linux-arm64 main.go
-GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w" -o bin/motd-darwin-amd64 main.go
-GOOS=darwin GOARCH=arm64 go build -ldflags="-s -w" -o bin/motd-darwin-arm64 main.go
-GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o bin/motd-windows-amd64.exe main.go
+VERSION=dev
+GOOS=linux GOARCH=amd64 go build -buildvcs=false -ldflags="-s -w -X main.VERSION=${VERSION}" -o bin/motd-linux-amd64 .
+GOOS=linux GOARCH=arm64 go build -buildvcs=false -ldflags="-s -w -X main.VERSION=${VERSION}" -o bin/motd-linux-arm64 .
+GOOS=darwin GOARCH=amd64 go build -buildvcs=false -ldflags="-s -w -X main.VERSION=${VERSION}" -o bin/motd-darwin-amd64 .
+GOOS=darwin GOARCH=arm64 go build -buildvcs=false -ldflags="-s -w -X main.VERSION=${VERSION}" -o bin/motd-darwin-arm64 .
+GOOS=windows GOARCH=amd64 go build -buildvcs=false -ldflags="-s -w -X main.VERSION=${VERSION}" -o bin/motd-windows-amd64.exe .
 ```

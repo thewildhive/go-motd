@@ -6,8 +6,8 @@ This document provides guidelines for AI agents and developers when adding new f
 
 **Purpose**: Display system information, service status, and media service statistics on login or command execution.
 
-**Language**: Go 1.20+  
-**Architecture**: Single-file monolithic design for simplicity  
+**Language**: Go 1.25+
+**Architecture**: Single-package CLI split by responsibility and platform
 **Performance Goal**: Maintain fast startup time (10-50ms) and low memory usage (5-10MB)
 
 ## Core Principles
@@ -21,15 +21,15 @@ This document provides guidelines for AI agents and developers when adding new f
 
 ### 2. Graceful Degradation
 
-- **Optional Features**: Missing tools/services should not cause errors
+- **Optional Features**: Missing tools, services, or config files should not cause errors
 - **Silent Failures**: If a service is unavailable, skip it silently (unless debug mode)
 - **Command Checks**: Always verify commands exist with `hasCommand()` before using
 - **API Failures**: Handle HTTP errors gracefully; show nothing rather than error messages
 
 ### 3. Code Organization
 
-- **Function Naming**: Use `show*()` for display functions (e.g., `showPlex()`, `showDocker()`)
-- **Helper Functions**: Keep utilities at the bottom of the file
+- **Function Naming**: Use `show*()` for display functions (e.g., `showDisk()`, `showDocker()`)
+- **File Placement**: Put config, UI, media, updater, utility, and platform-specific system code in their focused files
 - **Consistent Patterns**: Follow existing patterns for new features
 - **Type Safety**: Use structs for API responses; avoid `interface{}` when possible
 
@@ -47,6 +47,8 @@ This document provides guidelines for AI agents and developers when adding new f
 ## Adding New Features
 
 ### Adding a New System Metric
+
+System metrics should degrade gracefully on every supported platform. Put Windows implementations in `system_windows.go`, Unix implementations in `system_unix.go`, and shared parsers in `system_parse.go`.
 
 ```go
 func showNewMetric() {
@@ -74,14 +76,14 @@ func showNewMetric() {
 **Where to call it**: Add to the appropriate section in `main()`:
 - System Information: `showOS()`, `showUptime()`, etc.
 - Services & Resources: `showUser()`, `showProcesses()`, etc.
-- Media Services: `showPlex()`, `showJellyfin()`, etc.
+- Media Services: add a renderer and wire it through `collectMediaStatuses()` in `media.go`.
 
 ### Adding a New Media Service Integration
 
 ```go
 func showNewService() {
-    // 1. Check if configured (API key/token exists)
-    if config.NewServiceAPIKey == "" {
+    // 1. Check if configured (URL and API key/token exist)
+    if config.NewServiceURL == "" || config.NewServiceAPIKey == "" {
         return
     }
     
@@ -131,10 +133,10 @@ func showNewService() {
 
 **Configuration steps**:
 
-1. Add fields to `Config` struct
-2. Add to `loadConfig()` function
-3. Add to `hasMediaServices()` check
-4. Add environment variable to documentation
+1. Add fields to `Config` in `config.go`
+2. Add loading/default behavior if needed
+3. Add to `hasMediaServices()` check, requiring `enabled`, URL, and credentials
+4. Add JSON config field documentation and tests
 
 ### Adding Command-Line Flags
 
@@ -148,21 +150,28 @@ if *newFlag {
 }
 ```
 
-### Adding Environment Variables
+### Adding JSON Config Fields
 
 ```go
 // In Config struct:
 type Config struct {
-    // ... existing fields ...
-    NewServiceURL    string
-    NewServiceAPIKey string
+    Services struct {
+        NewService []ServiceConfig `json:"newservice"`
+    } `json:"services"`
 }
 
-// In loadConfig():
-config = Config{
-    // ... existing fields ...
-    NewServiceURL:    getEnv("NEW_SERVICE_URL", "http://localhost:8080"),
-    NewServiceAPIKey: getEnv("NEW_SERVICE_API_KEY", ""),
+// In config.json.sample:
+{
+  "services": {
+    "newservice": [
+      {
+        "name": "Main",
+        "url": "http://newservice:1234",
+        "api_key": "your-api-key",
+        "enabled": true
+      }
+    ]
+  }
 }
 ```
 
@@ -236,25 +245,28 @@ fmt.Print(str)        // ✓ Better
 ### Manual Testing
 
 ```bash
-# Test with no configuration (should degrade gracefully)
-./motd
+# Test with no configuration (should still show system information)
+./bin/motd
 
 # Test with debug mode
-./motd -d
+./bin/motd -d
 
 # Test help and version
-./motd -h
-./motd -v
+./bin/motd -h
+./bin/motd -v
+./bin/motd -no-config
+./bin/motd -config ./config.json
 
-# Test with partial configuration
-PLEX_TOKEN=test ./motd
+# Test with sample JSON configuration
+cp config.json.sample ~/.config/motd/config.json
+./bin/motd -d
 ```
 
 ### Performance Testing
 
 ```bash
 # Benchmark startup time
-time ./motd > /dev/null
+time ./bin/motd > /dev/null
 
 # Should complete in < 100ms typically
 # If > 500ms, investigate slow operations
@@ -264,14 +276,14 @@ time ./motd > /dev/null
 
 ```bash
 # Ensure code compiles
-go build -o motd main.go
+go build -buildvcs=false -o bin/motd .
 
 # Check for common issues
-go vet main.go
-gofmt -d main.go
+go vet ./...
+gofmt -d .
 
 # Test optimized build
-go build -ldflags="-s -w" -o motd main.go
+go build -buildvcs=false -ldflags="-s -w" -o bin/motd .
 ```
 
 ## Common Patterns
@@ -334,40 +346,21 @@ xml.Unmarshal(body, &resp)
 
 ## Architecture Decisions
 
-### Why Single File?
-- **Simplicity**: Easy to understand and deploy
-- **Performance**: No import overhead between packages
-- **Portability**: Single binary, single source file
-- **Maintenance**: All code in one place for small utility
-
-**When to split**: If file exceeds 2000 lines or has clearly separable concerns (e.g., move all media service functions to `media.go`).
+### Why One Package With Focused Files?
+- **Simplicity**: The CLI remains one `package main` and one compiled binary
+- **Platform Clarity**: Go build tags select `system_windows.go` or `system_unix.go`
+- **Maintainability**: Config, UI, media, updater, utility, and parser code have clear homes
+- **Testing**: Shared parsers stay untagged so tests run on every platform
 
 ### Why Global httpClient?
 - **Connection Pooling**: Reuses TCP connections across API calls
 - **Performance**: Avoids connection setup overhead
 - **Consistency**: Single timeout configuration
 
-### Why No Concurrency (Yet)?
-- **Simplicity**: Sequential execution is easier to debug
-- **Current Performance**: Already 5-10x faster than Bash
-- **Future Enhancement**: Can easily add goroutines when needed
-
-**Adding concurrency** (future):
-```go
-// Use sync.WaitGroup for concurrent API calls
-var wg sync.WaitGroup
-results := make(chan string, 5)
-
-wg.Add(1)
-go func() {
-    defer wg.Done()
-    // API call here
-    results <- "result"
-}()
-
-wg.Wait()
-close(results)
-```
+### Media Concurrency
+- Media API calls run concurrently to avoid serial timeout delays.
+- Preserve stable output order by collecting results and printing after all workers finish.
+- Failed optional services should be omitted from user-facing output and logged only in debug mode.
 
 ## Documentation Requirements
 
@@ -376,22 +369,24 @@ When adding features, update:
 1. **This file (AGENT.md)**: Add patterns for new feature types
 2. **README.md**: Document user-facing changes
 3. **Usage function**: Update help text if adding flags
-4. **Environment variables list**: Update if adding config options
-5. **REFACTORING_SUMMARY.md**: Note significant architectural changes
+4. **config.json.sample**: Update schema examples for new config options
+5. **main_test.go**: Add or update coverage for new behavior
 
 ## Configuration Management
 
-### Adding New Environment Variables
-1. Add to `Config` struct
-2. Add to `loadConfig()` with default value
-3. Document in `usage()` function
-4. Add to README.md environment variables section
-5. Consider adding to `.env` file example
+### Adding New JSON Config Fields
+1. Add to `Config` struct with explicit `json` tags
+2. Update `config.json.sample` with the new field
+3. Ensure runtime logic handles missing/disabled values safely
+4. Add or update unit tests in `main_test.go`
 
-### Configuration Priority
-1. Environment variables (highest)
-2. .env file
-3. Default values (lowest)
+### Configuration Lookup Priority
+Missing config is valid. The app should continue with system-only output and skip media integrations.
+
+1. `~/.config/motd/config.json` (highest)
+2. `/opt/motd/config.json` (fallback)
+
+Use `-config` to load an explicit JSON file. Use `-no-config` to skip config lookup entirely.
 
 ## Performance Optimization Tips
 
@@ -413,7 +408,7 @@ When adding features, update:
 
 ### Enable Debug Mode
 ```bash
-./motd -d
+./bin/motd -d
 ```
 
 ### Add Debug Statements
@@ -428,7 +423,7 @@ debugLog("API response: %d bytes", len(body))
 **Solution**: Check if guard condition (API key, command exists) is failing
 
 **Problem**: Slow startup  
-**Solution**: Use `time ./motd -d` and check debug logs for slow operations
+**Solution**: Use `time ./bin/motd -d` and check debug logs for slow operations
 
 **Problem**: HTTP timeout  
 **Solution**: Increase `CURL_TIMEOUT` constant or check service availability
@@ -440,7 +435,7 @@ debugLog("API response: %d bytes", len(body))
 
 ### Updating Version Number
 ```go
-var VERSION = "2.1.0" // Can be overridden with -ldflags "-X main.VERSION=..."
+var VERSION = "dev" // Release and Makefile builds override with -ldflags "-X main.VERSION=..."
 ```
 
 ### Semantic Versioning
@@ -460,18 +455,19 @@ var VERSION = "2.1.0" // Can be overridden with -ldflags "-X main.VERSION=..."
 - `vnstat` - Network bandwidth statistics
 - `docker` - Container count
 - `free`, `df`, `uptime`, `ps` - System metrics
+- Windows built-ins: PowerShell/CIM, `wmic`, `tasklist`
 
 ### Required (Build)
-- Go 1.20+ 
+- Go 1.25+
 - Standard build tools (make, etc.)
 
 ## Security Considerations
 
 ### API Keys and Tokens
-- ✅ Load from environment variables or .env file
+- ✅ Store in `config.json` with restrictive file permissions
 - ✅ Never hardcode in source
 - ✅ Don't log in non-debug mode
-- ❌ Never commit .env files with real credentials
+- ❌ Never commit real API keys in any config file
 
 ### HTTP Requests
 - ✅ Use HTTPS when available
@@ -488,34 +484,33 @@ var VERSION = "2.1.0" // Can be overridden with -ldflags "-X main.VERSION=..."
 ## Future Enhancement Ideas
 
 ### High Priority
-- [ ] Concurrent API calls with goroutines
-- [ ] Response caching with TTL
-- [ ] Configuration file schema validation tooling for JSON config
+- Response caching with TTL
+- Configuration file schema validation tooling for JSON config
 
 ### Medium Priority
-- [ ] Metrics export (Prometheus format)
-- [ ] JSON output mode for scripting
-- [ ] Plugin system for custom checks
-- [ ] Threshold-based color coding
+- Metrics export (Prometheus format)
+- JSON output mode for scripting
+- Plugin system for custom checks
+- Threshold-based color coding
 
 ### Low Priority
-- [ ] Web dashboard (HTTP server)
-- [ ] Historical metrics storage
-- [ ] Email/Slack notifications
-- [ ] Custom themes/color schemes
+- Web dashboard (HTTP server)
+- Historical metrics storage
+- Email/Slack notifications
+- Custom themes/color schemes
 
 ## Getting Help
 
 ### For AI Agents
 - Read this file completely before making changes
 - Follow existing patterns in the codebase
-- Test changes with `make build-optimized && ./motd`
-- Check performance with `time ./motd`
+- Test changes with `make build-optimized && ./bin/motd`
+- Check performance with `time ./bin/motd`
 
 ### For Developers
 - Review `README.md` for project overview
-- Review `REFACTORING_SUMMARY.md` for technical details
-- Use `./motd -d` for debugging
+- Review focused `*.go` files and `main_test.go` for current behavior and test coverage
+- Use `./bin/motd -d` for debugging
 - Run `make help` for build commands
 
 ## Checklist for New Features
@@ -529,7 +524,7 @@ Before submitting changes:
 - [ ] Appropriate color coding (GREEN/YELLOW/RED/BLUE)
 - [ ] Debug logging for troubleshooting
 - [ ] Updated documentation (README.md, usage())
-- [ ] No performance regression (test with `time ./motd`)
+- [ ] No performance regression (test with `time ./bin/motd`)
 - [ ] No new external dependencies (if possible)
 - [ ] Tested on target platform (Linux/macOS)
 
