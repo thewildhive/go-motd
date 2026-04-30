@@ -1,118 +1,164 @@
-# OpenCode Session Plan (JSON + Seerr Migration)
+# OpenCode Full Project Plan (End-to-End)
 
-Use this file as the single source of truth for continuing this migration in a new OpenCode session.
+This is the complete plan for the `go-motd` modernization and quality pass. It is designed to be dropped directly into a fresh OpenCode session so another agent can continue from context without replaying chat history.
 
 ## First 5 Commands To Run
 
-Run these first in a new session to rehydrate context fast:
-
 ```bash
-git status --short
+git status --short --branch
 go test ./...
 gofmt -l .
 go vet ./...
 go run . -h
 ```
 
-Then continue with the remaining checklist in this file.
+Then use this plan section-by-section.
 
-## Objective
+## Scope and Product Decisions (Locked)
 
-Deliver a high-quality breaking-change release of `go-motd` with:
-- JSON-only config (`config.json` paths)
-- full removal of Organizr support
-- direct Seerr integration for pending requests
-- robust tests and strict quality gates
+1. Breaking change: JSON-only config.
+2. Config filenames and paths:
+   - `~/.config/motd/config.json`
+   - `/opt/motd/config.json`
+3. No aliases for legacy keys/services.
+4. Remove Organizr support completely.
+5. Use Seerr directly for pending requests.
+6. Quality bar:
+   - No `TODO`/`FIXME` left in changed files.
+   - Unit tests for changed logic.
+   - `gofmt`, `go vet`, `go test`, build must pass.
 
-## Non-Negotiable Constraints
+## Why This Migration
 
-1. No config aliases (`overseerr` alias is not allowed).
-2. No Organizr compatibility mode; remove it completely.
-3. No `TODO`/`FIXME` left in changed files.
-4. Unit tests for all changed logic paths.
-5. Final validation must include `gofmt`, `go vet`, `go test`, and build.
+- Align runtime to Go stdlib-only for config parsing (`encoding/json`, no YAML package).
+- Remove incorrect/fragile Organizr request behavior.
+- Use direct Seerr endpoint (`/api/v1/request/count`) with `X-Api-Key` for stable pending count.
+- Improve parser correctness and reliability in service integrations.
 
-## Current Working Tree Snapshot
+## Research Summary Used for This Plan
 
-Modified/added so far:
-- `main.go`
-- `main_test.go` (new)
-- `go.mod`
-- `go.sum`
-- `install.sh`
-- `README.md`
-- `INSTALL.md`
-- `AGENT.md`
-- `config.json` (new)
-- `config.json.sample` (new)
-- `test-default.json` (new)
-- removed: `config.yml`, `config.yml.sample`, `test-default.yml`
+### Seerr
+- Seerr is the target (replacement path for Overseerr/Jellyseerr deployments).
+- Pending count endpoint: `GET /api/v1/request/count`.
+- Auth header: `X-Api-Key`.
 
-## Scope Checklist
+### Organizr
+- Current code path previously used `/api/v2/requests` + `Authorization: Bearer`, which is not aligned with current upstream routes/auth expectations.
+- Organizr support is intentionally removed per product decision.
+
+### Other External APIs
+- Sonarr/Radarr `wanted/missing` payloads are paged; prefer `totalRecords`.
+- Jellyfin sessions parsing should be typed to avoid `map[string]interface{}` fragility.
+- `vnstat --json` parsing should match interface and month more defensively.
+
+## Current Implementation Status Snapshot
+
+This section should be validated with `git status` in the new session. Based on latest state:
+
+### Runtime and Config
+- JSON loader and strict decode logic added.
+- Legacy YAML detection (`config.yml` / `config.yaml`) with explicit migration error.
+- Config struct migrated to JSON tags.
+- `VERSION` changed to linker-settable variable.
+
+### Service Integrations
+- Organizr removed from runtime/config.
+- Seerr service integration added.
+- Sonarr/Radarr parsing improved (`totalRecords` support).
+- Jellyfin parsing made typed.
+- vnstat parsing improved via helper functions.
+
+### Tests
+- New `main_test.go` covers:
+  - JSON decode success/fail/unknown fields
+  - legacy YAML detection paths
+  - Seerr request count behavior (`httptest`)
+  - ARR count parsing
+  - Jellyfin session parsing
+  - vnstat parsing/month selection
+  - version/platform helper behavior
+
+### Artifacts
+- Added JSON config files:
+  - `config.json`
+  - `config.json.sample`
+  - `test-default.json`
+- Removed YAML config files:
+  - `config.yml`
+  - `config.yml.sample`
+  - `test-default.yml`
+
+### Docs/Installer
+- `README.md` rewritten to JSON + Seerr.
+- `INSTALL.md` rewritten and de-duplicated.
+- `install.sh` updated for JSON sample generation and artifact handling.
+
+## Full Work Plan (Checklist)
 
 ### A) Core Runtime Migration
-- [x] Convert config tags/loader from YAML to strict JSON (`encoding/json`, unknown fields rejected).
-- [x] Switch config paths to:
-  - `~/.config/motd/config.json`
-  - `/opt/motd/config.json`
-- [x] Detect legacy YAML (`config.yml`/`config.yaml`) and exit with explicit migration error.
-- [x] Remove Organizr runtime/config references.
-- [x] Add Seerr runtime integration (`GET /api/v1/request/count`, `X-Api-Key`).
-- [x] Make `VERSION` linker-settable (`var VERSION = ...`).
+- [x] Replace YAML tags/loaders with strict JSON loader.
+- [x] Switch config path references to `config.json` locations.
+- [x] Add migration error for detected legacy YAML files.
+- [x] Remove Organizr config/service/runtime references.
+- [x] Add Seerr service (`/api/v1/request/count`, `X-Api-Key`).
+- [x] Make `VERSION` linker-settable for build/release injection.
 
-### B) Reliability/Correctness Improvements
-- [x] Fix deferred response-body handling in service loops by scoping requests per instance.
-- [x] Harden Sonarr/Radarr counts (`totalRecords` fallback to `len(records)`).
-- [x] Harden Jellyfin parsing with typed structures (no fake `0.00 Mbps`).
-- [x] Improve vnstat parsing/interface selection with helper functions.
+### B) Reliability and Parsing Correctness
+- [x] Eliminate long-lived deferred response closes in service loops by scoping requests.
+- [x] Harden Sonarr/Radarr count logic (`totalRecords` fallback).
+- [x] Replace dynamic Jellyfin maps with typed decode.
+- [x] Improve vnstat interface and month selection logic.
 
-### C) Config + Installer + Docs
-- [x] Replace default/sample/test config artifacts with JSON versions.
-- [x] Installer writes valid `config.json` matching current schema.
-- [x] README rewritten for JSON + Seerr.
-- [x] INSTALL rewritten/deduplicated.
+### C) Config Files and Dependency Cleanup
+- [x] Remove YAML dependency from `go.mod`/`go.sum`.
+- [x] Add JSON config artifacts and remove YAML artifacts.
 
-### D) Tests
-- [x] Add unit tests for JSON decode and migration behavior.
-- [x] Add unit tests for Seerr request decoding via `httptest`.
-- [x] Add unit tests for ARR count parsing.
-- [x] Add unit tests for Jellyfin parsing logic.
-- [x] Add unit tests for vnstat month/interface parsing.
-- [x] Add unit tests for version compare/platform asset name behavior.
+### D) Tests and Validation
+- [x] Add unit tests for all changed parser/helper logic.
+- [x] `go test ./...` passing.
+- [ ] Run `go test -race ./...` if environment supports CGO compiler toolchain.
+  - Note: Windows environment may lack `gcc`; if so, record blocker clearly.
 
-### E) Still Required Before Finalize
-- [ ] Reconcile release workflow and semantic-release config drift:
-  - `.github/workflows/release.yml`
-  - `.releaserc.json`
-  - ensure no `|| true` on critical release steps
-  - remove conflicting manual version-bump logic vs semantic-release behavior
-- [ ] Validate documentation consistency across all remaining docs (`CONTRIBUTING.md`, `QUICK_START.sh`, etc.).
-- [ ] Run final quality gates and scenario checks (see Runbook below).
+### E) Docs and Installer Alignment
+- [x] README updated for JSON + Seerr.
+- [x] INSTALL updated and deduplicated.
+- [x] Installer sample output switched to JSON schema.
+- [x] Remove stale docs references to YAML/Organizr where user-facing.
 
-## Release Workflow Repair Plan
+### F) Release System Hardening (Remaining)
+- [ ] Rework `.github/workflows/release.yml` to use one versioning strategy.
+- [ ] Remove silent failure masks (`|| true`) in release-critical steps.
+- [ ] Remove manual patch bump logic if semantic-release is authoritative.
+- [ ] Ensure changelog/tag/release asset steps are coherent and deterministic.
+- [ ] Ensure `.releaserc.json` matches intended release flow.
+- [ ] Update docs to describe actual release mechanism (not conflicting statements).
 
-1. Choose a single release source of truth:
-   - Recommended: semantic-release controls version/tag/changelog/release.
-2. Remove dry-run + manual patch increment logic from workflow.
-3. Remove silent success masking (`|| true`) from release-critical commands.
-4. Ensure asset build uses resolved version consistently.
-5. Ensure docs reflect actual release behavior (no contradictory statements).
+## Release Workflow Repair Plan (Detailed)
+
+1. Pick one source of truth:
+   - Recommended: semantic-release controls version/tag/changelog/release notes.
+2. In workflow:
+   - remove manual NEXT_VERSION patch increment block,
+   - remove dry-run parsing as a control path,
+   - remove `|| true` on commit/push/release steps.
+3. Ensure build artifacts use resolved release version once.
+4. Ensure changelog generation is real (not dry-run) if changelog updates are expected.
+5. Validate branch protection assumptions (no hidden bypass surprises).
 
 ## Test Matrix (Must Pass)
 
-1. JSON config valid -> app loads.
-2. JSON config unknown field -> parse fails clearly.
-3. No config file -> missing-config error with JSON paths.
-4. Legacy YAML exists -> migration-specific error.
-5. Seerr success path -> pending count renders.
-6. Seerr non-200 path -> graceful skip + debug log.
-7. Sonarr/Radarr counts from `totalRecords`.
-8. Jellyfin active/transcode parsing with/without bitrate.
-9. vnstat parser picks current/latest month and interface.
+1. Valid JSON config loads.
+2. Unknown config fields fail with clear error.
+3. Missing config prints JSON path guidance.
+4. Legacy YAML present prints migration-specific error.
+5. Seerr success path renders pending requests.
+6. Seerr non-200 path fails gracefully.
+7. Sonarr/Radarr count selection uses `totalRecords` correctly.
+8. Jellyfin parser handles active/transcode/bitrate variants.
+9. vnstat parser selects expected month/interface behavior.
+10. Version helpers remain stable.
 
 ## Quality Gate Runbook
-
-Run in repo root:
 
 ```bash
 gofmt -l .
@@ -127,22 +173,39 @@ Race tests:
 go test -race ./...
 ```
 
-Note: on Windows, `-race` requires CGO and a C compiler in PATH (e.g. `gcc`). If unavailable, mark as environment blocker and record explicitly in final handoff.
+If race test fails due to environment (e.g., missing `gcc` on Windows), document as environment blocker and proceed with explicit note.
 
-Tag scan before final response:
+Tag hygiene check:
 
 ```bash
-# ensure no unresolved markers in changed files
-grep for TODO|FIXME (project-wide or changed files)
+# Ensure no unresolved markers in touched files
+search for TODO|FIXME
 ```
+
+## Git / Delivery Steps
+
+1. Ensure working tree is clean after changes.
+2. Commit in logical units if further edits are made.
+3. Push branch to remote.
+4. If protected branch requires PR, follow repo policy.
+
+## Risks and Mitigations
+
+- Risk: Release workflow remains inconsistent.
+  - Mitigation: prioritize section F before final release cut.
+- Risk: Race tests unavailable in local env.
+  - Mitigation: run in CI with proper CGO toolchain or document blocker.
+- Risk: Hidden docs drift in less visible files.
+  - Mitigation: grep audit for YAML/Organizr/version-flow references.
 
 ## Definition of Done
 
-All items below must be true:
-- Runtime behavior matches JSON+Seerr scope.
-- No Organizr support remains.
-- Unit tests cover all touched logic and pass.
-- Formatting/lint/build pass.
-- Release workflow no longer has conflicting version logic or silent critical failures.
-- No `TODO`/`FIXME` left in changed files.
-- Final summary includes migration notes and any environment blockers.
+All must be true:
+
+1. Runtime behavior matches JSON + Seerr scope.
+2. No Organizr runtime/config/docs references (except intentional migration notes/history).
+3. Unit tests cover changed logic and pass.
+4. Formatting/lint/build checks pass.
+5. Release workflow and config no longer conflict.
+6. No `TODO`/`FIXME` in changed files.
+7. Final handoff includes migration notes and any environment blockers.
