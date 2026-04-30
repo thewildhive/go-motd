@@ -54,7 +54,14 @@ Config lookup order:
 
 Use `motd -config /path/to/config.json` to load a specific file, or `motd -no-config` to force system-only output.
 
-Legacy YAML files (`config.yml` / `config.yaml`) are not supported and will trigger a migration error.
+Legacy YAML files (`config.yml` / `config.yaml`) are not loaded at runtime. To migrate one to JSON, run:
+
+```bash
+motd -migrate
+motd -config /path/to/config.json -migrate
+```
+
+The migrator writes the matching JSON path and refuses to overwrite an existing JSON config. Legacy Organizr entries are skipped because Organizr support was removed.
 
 Create a config only when you want media integrations or custom system paths:
 

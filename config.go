@@ -135,12 +135,7 @@ func detectLegacyYAMLConfigFromPaths(legacyPaths, jsonPaths []string) *legacyCon
 
 	for i, legacyPath := range legacyPaths {
 		if _, err := os.Stat(legacyPath); err == nil {
-			requiredPath := ""
-			if i < len(jsonPaths) {
-				requiredPath = jsonPaths[i]
-			} else if len(jsonPaths) > 0 {
-				requiredPath = jsonPaths[0]
-			}
+			requiredPath := matchingJSONConfigPath(legacyPath, jsonPaths, i)
 
 			return &legacyConfigError{
 				legacyPath:   legacyPath,
@@ -151,6 +146,23 @@ func detectLegacyYAMLConfigFromPaths(legacyPaths, jsonPaths []string) *legacyCon
 	}
 
 	return nil
+}
+
+func matchingJSONConfigPath(legacyPath string, jsonPaths []string, legacyIndex int) string {
+	for _, jsonPath := range jsonPaths {
+		if filepath.Dir(jsonPath) == filepath.Dir(legacyPath) {
+			return jsonPath
+		}
+	}
+
+	if legacyIndex < len(jsonPaths) {
+		return jsonPaths[legacyIndex]
+	}
+	if len(jsonPaths) > 0 {
+		return jsonPaths[0]
+	}
+
+	return ""
 }
 
 func loadRuntimeConfigFromPaths(jsonPaths, legacyPaths []string) (Config, error) {
@@ -189,6 +201,7 @@ func printLegacyConfigError(err *legacyConfigError) {
 	fmt.Printf("Found legacy config at: %s\n", err.legacyPath)
 	if err.requiredPath != "" {
 		fmt.Printf("Create a JSON config at: %s\n", err.requiredPath)
+		fmt.Printf("Or migrate automatically with: motd -config %s -migrate\n", err.requiredPath)
 	}
 	if err.fallbackPath != "" {
 		fmt.Printf("Fallback JSON path: %s\n", err.fallbackPath)

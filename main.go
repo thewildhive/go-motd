@@ -28,6 +28,7 @@ func main() {
 	showVersion := flag.Bool("v", false, "Show version information")
 	debug := flag.Bool("d", false, "Enable debug mode")
 	configPath := flag.String("config", "", "Load config from a specific JSON file")
+	migrateConfig := flag.Bool("migrate", false, "Migrate legacy YAML config to JSON and exit")
 	noConfig := flag.Bool("no-config", false, "Skip config loading and show system information only")
 	flag.Parse()
 
@@ -38,6 +39,14 @@ func main() {
 
 	if *showVersion {
 		fmt.Printf("MOTD Script v%s\n", VERSION)
+		return
+	}
+
+	if *migrateConfig {
+		if err := runConfigMigration(*configPath); err != nil {
+			printConfigMigrationError(err)
+			os.Exit(1)
+		}
 		return
 	}
 
@@ -84,6 +93,7 @@ Options:
   -v              Show version information
   -d              Enable debug mode
   -config PATH    Load config from a specific JSON file
+  -migrate        Migrate legacy config.yml/config.yaml to JSON and exit
   -no-config      Skip config loading and show system information only
 
 Commands:

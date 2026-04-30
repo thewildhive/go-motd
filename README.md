@@ -40,6 +40,7 @@ Options:
   -v              Show version information
   -d              Enable debug mode
   -config PATH    Load config from a specific JSON file
+  -migrate        Migrate legacy config.yml/config.yaml to JSON and exit
   -no-config      Skip config loading and show system information only
 
 Commands:
@@ -59,7 +60,9 @@ Use `-config /path/to/config.json` to load a specific file, or `-no-config` to f
 
 Create a config file only when you want media integrations or custom system paths such as `tank_mount` or a fixed network interface.
 
-If a legacy YAML config is detected (`config.yml`/`config.yaml`), `motd` exits with a migration message.
+If a legacy YAML config is detected (`config.yml`/`config.yaml`), `motd` exits with a migration message. Run `motd -migrate` to write the matching `config.json` next to the legacy file. With `-config /path/to/config.json`, migration looks for `/path/to/config.yml` or `/path/to/config.yaml` and writes the specified JSON path.
+
+Legacy Organizr entries are not migrated because Organizr support was removed. The migrator skips them and reports the skipped service.
 
 ### Example Config
 
