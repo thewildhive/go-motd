@@ -440,7 +440,7 @@ debugLog("API response: %d bytes", len(body))
 
 ### Updating Version Number
 ```go
-const VERSION = "2.1.0" // Update here
+var VERSION = "2.1.0" // Can be overridden with -ldflags "-X main.VERSION=..."
 ```
 
 ### Semantic Versioning
@@ -490,7 +490,7 @@ const VERSION = "2.1.0" // Update here
 ### High Priority
 - [ ] Concurrent API calls with goroutines
 - [ ] Response caching with TTL
-- [ ] Configuration file support (YAML/TOML)
+- [ ] Configuration file schema validation tooling for JSON config
 
 ### Medium Priority
 - [ ] Metrics export (Prometheus format)

@@ -1,27 +1,27 @@
 package main
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/json"
 	"encoding/xml"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
 	"os/exec"
-	"os/user"
 	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
 	"time"
-
-	"gopkg.in/yaml.v3"
 )
 
+var VERSION = "0.2.5"
+
 const (
-	VERSION         = "0.2.5"
 	CURL_TIMEOUT    = 5 * time.Second
 	DOT_LABEL_WIDTH = 22
 )
@@ -39,29 +39,36 @@ const (
 
 // ServiceConfig holds configuration for a single service instance
 type ServiceConfig struct {
-	Name    string `yaml:"name"`
-	URL     string `yaml:"url"`
-	APIKey  string `yaml:"api_key,omitempty"`
-	Token   string `yaml:"token,omitempty"`
-	Enabled bool   `yaml:"enabled"`
+	Name    string `json:"name"`
+	URL     string `json:"url"`
+	APIKey  string `json:"api_key,omitempty"`
+	Token   string `json:"token,omitempty"`
+	Enabled bool   `json:"enabled"`
 }
 
 // Config holds application configuration
 type Config struct {
 	Services struct {
-		Plex     []ServiceConfig `yaml:"plex"`
-		Jellyfin []ServiceConfig `yaml:"jellyfin"`
-		Sonarr   []ServiceConfig `yaml:"sonarr"`
-		Radarr   []ServiceConfig `yaml:"radarr"`
-		Organizr []ServiceConfig `yaml:"organizr"`
-	} `yaml:"services"`
+		Plex     []ServiceConfig `json:"plex"`
+		Jellyfin []ServiceConfig `json:"jellyfin"`
+		Sonarr   []ServiceConfig `json:"sonarr"`
+		Radarr   []ServiceConfig `json:"radarr"`
+		Seerr    []ServiceConfig `json:"seerr"`
+	} `json:"services"`
 	System struct {
-		ComposeDir string `yaml:"compose_dir"`
-		TankMount  string `yaml:"tank_mount"`
+		ComposeDir string `json:"compose_dir"`
+		TankMount  string `json:"tank_mount"`
 		Network    struct {
-			Interface string `yaml:"interface,omitempty"`
-		} `yaml:"network,omitempty"`
-	} `yaml:"system"`
+			Interface string `json:"interface,omitempty"`
+		} `json:"network,omitempty"`
+	} `json:"system"`
+}
+
+type vnstatInterface struct {
+	ID      string `json:"id"`
+	Traffic struct {
+		Month []vnstatMonthlyEntry `json:"month"`
+	} `json:"traffic"`
 }
 
 // Global state
@@ -71,10 +78,35 @@ var (
 	debugMode  bool
 )
 
-// Config file paths in priority order
-var configPaths = []string{
-	filepath.Join(getUserHome(), ".config", "motd", "config.yml"),
-	"/opt/motd/config.yml",
+var errNoJSONConfig = errors.New("no JSON config files found")
+
+type legacyConfigError struct {
+	legacyPath   string
+	requiredPath string
+	fallbackPath string
+}
+
+func (e *legacyConfigError) Error() string {
+	return fmt.Sprintf("legacy YAML config detected at %s", e.legacyPath)
+}
+
+func getConfigPaths() []string {
+	home := getUserHome()
+	userConfig := filepath.Join(home, ".config", "motd", "config.json")
+	if home == "" {
+		return []string{"/opt/motd/config.json"}
+	}
+	return []string{userConfig, "/opt/motd/config.json"}
+}
+
+func getLegacyConfigPaths() []string {
+	home := getUserHome()
+	userYML := filepath.Join(home, ".config", "motd", "config.yml")
+	userYAML := filepath.Join(home, ".config", "motd", "config.yaml")
+	if home == "" {
+		return []string{"/opt/motd/config.yml", "/opt/motd/config.yaml"}
+	}
+	return []string{userYML, userYAML, "/opt/motd/config.yml", "/opt/motd/config.yaml"}
 }
 
 func main() {
@@ -139,7 +171,7 @@ func main() {
 		showJellyfin()
 		showSonarr()
 		showRadarr()
-		showOrganizr()
+		showSeerr()
 	}
 
 	fmt.Println()
@@ -158,8 +190,8 @@ Commands:
   self-update     Update to the latest version from GitHub releases
 
 Configuration Files:
-  ~/.config/motd/config.yml    (highest priority)
-  /opt/motd/config.yml         (fallback)`)
+  ~/.config/motd/config.json   (highest priority)
+  /opt/motd/config.json        (fallback)`)
 }
 
 func debugLog(msg string, args ...interface{}) {
@@ -168,45 +200,144 @@ func debugLog(msg string, args ...interface{}) {
 	}
 }
 
-func loadYAMLConfig() (Config, error) {
-	var yamlConfig Config
+func decodeJSONConfig(data []byte) (Config, error) {
+	var parsedConfig Config
 
-	for _, configPath := range configPaths {
-		if _, err := os.Stat(configPath); err == nil {
-			debugLog("Loading YAML config from: %s", configPath)
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
 
-			data, err := os.ReadFile(configPath)
-			if err != nil {
-				debugLog("Failed to read config file %s: %v", configPath, err)
+	if err := decoder.Decode(&parsedConfig); err != nil {
+		return parsedConfig, err
+	}
+
+	if err := decoder.Decode(&struct{}{}); err != io.EOF {
+		if err == nil {
+			return parsedConfig, fmt.Errorf("config file must contain a single JSON object")
+		}
+		return parsedConfig, err
+	}
+
+	return parsedConfig, nil
+}
+
+func loadJSONConfigFromPaths(paths []string) (Config, error) {
+	var loadedConfig Config
+
+	for _, configPath := range paths {
+		info, err := os.Stat(configPath)
+		if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
 				continue
 			}
+			return loadedConfig, fmt.Errorf("failed to stat config file %s: %w", configPath, err)
+		}
 
-			if err := yaml.Unmarshal(data, &yamlConfig); err != nil {
-				debugLog("Failed to parse YAML config %s: %v", configPath, err)
-				continue
+		if info.IsDir() {
+			return loadedConfig, fmt.Errorf("config file path is a directory: %s", configPath)
+		}
+
+		debugLog("Loading JSON config from: %s", configPath)
+		data, err := os.ReadFile(configPath)
+		if err != nil {
+			return loadedConfig, fmt.Errorf("failed to read config file %s: %w", configPath, err)
+		}
+
+		parsedConfig, err := decodeJSONConfig(data)
+		if err != nil {
+			return loadedConfig, fmt.Errorf("failed to parse JSON config %s: %w", configPath, err)
+		}
+
+		debugLog("Successfully loaded JSON config from: %s", configPath)
+		return parsedConfig, nil
+	}
+
+	debugLog("No JSON config files found")
+	return loadedConfig, errNoJSONConfig
+}
+
+func detectLegacyYAMLConfigFromPaths(legacyPaths, jsonPaths []string) *legacyConfigError {
+	fallbackPath := ""
+	if len(jsonPaths) > 1 {
+		fallbackPath = jsonPaths[1]
+	}
+
+	for i, legacyPath := range legacyPaths {
+		if _, err := os.Stat(legacyPath); err == nil {
+			requiredPath := ""
+			if i < len(jsonPaths) {
+				requiredPath = jsonPaths[i]
+			} else if len(jsonPaths) > 0 {
+				requiredPath = jsonPaths[0]
 			}
 
-			debugLog("Successfully loaded YAML config from: %s", configPath)
-			return yamlConfig, nil
+			return &legacyConfigError{
+				legacyPath:   legacyPath,
+				requiredPath: requiredPath,
+				fallbackPath: fallbackPath,
+			}
 		}
 	}
 
-	debugLog("No YAML config files found")
-	return yamlConfig, fmt.Errorf("no YAML config files found")
+	return nil
+}
+
+func loadRuntimeConfigFromPaths(jsonPaths, legacyPaths []string) (Config, error) {
+	loadedConfig, err := loadJSONConfigFromPaths(jsonPaths)
+	if err == nil {
+		return loadedConfig, nil
+	}
+
+	if errors.Is(err, errNoJSONConfig) {
+		if legacyErr := detectLegacyYAMLConfigFromPaths(legacyPaths, jsonPaths); legacyErr != nil {
+			return Config{}, legacyErr
+		}
+	}
+
+	return Config{}, err
+}
+
+func loadRuntimeConfig() (Config, error) {
+	return loadRuntimeConfigFromPaths(getConfigPaths(), getLegacyConfigPaths())
+}
+
+func printMissingConfigError(paths []string) {
+	fmt.Printf("%sError: No configuration file found. Please create a JSON config file at:%s\n", RED, RESET)
+	for _, path := range paths {
+		fmt.Printf("  %s\n", path)
+	}
+}
+
+func printLegacyConfigError(err *legacyConfigError) {
+	fmt.Printf("%sError: Legacy YAML config is no longer supported.%s\n", RED, RESET)
+	fmt.Printf("Found legacy config at: %s\n", err.legacyPath)
+	if err.requiredPath != "" {
+		fmt.Printf("Create a JSON config at: %s\n", err.requiredPath)
+	}
+	if err.fallbackPath != "" {
+		fmt.Printf("Fallback JSON path: %s\n", err.fallbackPath)
+	}
 }
 
 func loadConfig() {
-	// Load YAML configuration
-	yamlConfig, err := loadYAMLConfig()
+	loadedConfig, err := loadRuntimeConfig()
 	if err != nil {
-		fmt.Printf("%sError: No configuration file found. Please create a config file at:%s\n", RED, RESET)
-		fmt.Printf("  %s\n", configPaths[0])
-		fmt.Printf("  %s\n", configPaths[1])
+		if errors.Is(err, errNoJSONConfig) {
+			printMissingConfigError(getConfigPaths())
+			os.Exit(1)
+		}
+
+		var legacyErr *legacyConfigError
+		if errors.As(err, &legacyErr) {
+			printLegacyConfigError(legacyErr)
+			os.Exit(1)
+		}
+
+		fmt.Printf("%sError loading configuration: %v%s\n", RED, err, RESET)
 		os.Exit(1)
 	}
 
-	config = yamlConfig
-	debugLog("Using YAML configuration")
+	config = loadedConfig
+	debugLog("Using JSON configuration")
 }
 
 func hasMediaServices() bool {
@@ -235,8 +366,8 @@ func hasMediaServices() bool {
 		}
 	}
 
-	for _, organizr := range config.Services.Organizr {
-		if organizr.Enabled && (organizr.APIKey != "") {
+	for _, seerr := range config.Services.Seerr {
+		if seerr.Enabled && (seerr.APIKey != "") {
 			return true
 		}
 	}
@@ -357,57 +488,122 @@ func showMemory() {
 	}
 }
 
+type vnstatMonthlyEntry struct {
+	Rx   uint64 `json:"rx"`
+	Tx   uint64 `json:"tx"`
+	Date struct {
+		Year  int `json:"year"`
+		Month int `json:"month"`
+	} `json:"date"`
+}
+
+type vnstatData struct {
+	Interfaces []vnstatInterface `json:"interfaces"`
+}
+
+func pickLatestVnstatMonth(entries []vnstatMonthlyEntry, now time.Time) (vnstatMonthlyEntry, bool) {
+	if len(entries) == 0 {
+		return vnstatMonthlyEntry{}, false
+	}
+
+	for _, entry := range entries {
+		if entry.Date.Year == now.Year() && entry.Date.Month == int(now.Month()) {
+			return entry, true
+		}
+	}
+
+	latest := entries[0]
+	for _, entry := range entries[1:] {
+		if entry.Date.Year > latest.Date.Year || (entry.Date.Year == latest.Date.Year && entry.Date.Month > latest.Date.Month) {
+			latest = entry
+		}
+	}
+
+	return latest, true
+}
+
+func pickVnstatInterface(data vnstatData, preferred string) (vnstatInterface, bool) {
+	if len(data.Interfaces) == 0 {
+		return vnstatInterface{}, false
+	}
+
+	if preferred != "" {
+		for _, iface := range data.Interfaces {
+			if iface.ID == preferred {
+				return iface, true
+			}
+		}
+	}
+
+	for _, iface := range data.Interfaces {
+		if len(iface.Traffic.Month) > 0 {
+			return iface, true
+		}
+	}
+
+	return data.Interfaces[0], true
+}
+
+func parseVnstatMonthlyUsage(output []byte, preferredInterface string, now time.Time) (float64, float64, float64, float64, error) {
+	var parsed vnstatData
+	if err := json.Unmarshal(output, &parsed); err != nil {
+		return 0, 0, 0, 0, err
+	}
+
+	iface, ok := pickVnstatInterface(parsed, preferredInterface)
+	if !ok || len(iface.Traffic.Month) == 0 {
+		return 0, 0, 0, 0, fmt.Errorf("no vnstat interface/monthly data available")
+	}
+
+	month, ok := pickLatestVnstatMonth(iface.Traffic.Month, now)
+	if !ok {
+		return 0, 0, 0, 0, fmt.Errorf("no vnstat monthly entry available")
+	}
+
+	rxGB := float64(month.Rx) / 1073741824.0
+	txGB := float64(month.Tx) / 1073741824.0
+
+	day := float64(now.Day())
+	if day < 1 {
+		day = 1
+	}
+
+	rxEst := rxGB * (30.0 / day)
+	txEst := txGB * (30.0 / day)
+
+	return rxGB, txGB, rxEst, txEst, nil
+}
+
 func showBandwidth() {
 	if !hasCommand("vnstat") {
 		return
 	}
 
-	// Determine which interface to use
-	interfaceName := config.System.Network.Interface
+	interfaceName := strings.TrimSpace(config.System.Network.Interface)
 	if interfaceName == "" {
-		interfaceName = "enp7s0" // fallback as specified in requirements
+		interfaceName = getDefaultInterface()
+	}
+	if interfaceName == "" {
+		interfaceName = "enp7s0"
 	}
 
-	// Always use monthly data with 30-day estimates (hardcoded)
-	output, err := exec.Command("vnstat", "--json", "m", interfaceName).Output()
+	output, err := exec.Command("vnstat", "--json", "m", "-i", interfaceName).Output()
 	if err != nil {
+		if strings.TrimSpace(config.System.Network.Interface) == "" {
+			output, err = exec.Command("vnstat", "--json", "m").Output()
+		}
+	}
+
+	if err != nil {
+		debugLog("vnstat command failed: %v", err)
 		return
 	}
 
-	var data struct {
-		Interfaces []struct {
-			ID      string `json:"id"`
-			Traffic struct {
-				Month []struct {
-					Rx   uint64 `json:"rx"`
-					Tx   uint64 `json:"tx"`
-					Date struct {
-						Year  int `json:"year"`
-						Month int `json:"month"`
-					} `json:"date"`
-				} `json:"month"`
-			} `json:"traffic"`
-		} `json:"interfaces"`
-	}
-
-	if err := json.Unmarshal(output, &data); err != nil {
+	rxGB, txGB, rxEst, txEst, err := parseVnstatMonthlyUsage(output, interfaceName, time.Now())
+	if err != nil {
+		debugLog("Failed to parse vnstat data for %s: %v", interfaceName, err)
 		return
 	}
-
-	if len(data.Interfaces) == 0 || len(data.Interfaces[0].Traffic.Month) == 0 {
-		return
-	}
-
-	// Take the latest month entry
-	month := data.Interfaces[0].Traffic.Month[len(data.Interfaces[0].Traffic.Month)-1]
-
-	rxGB := float64(month.Rx) / 1073741824.0
-	txGB := float64(month.Tx) / 1073741824.0
-
-	// Estimate for 30‑day month (always using monthly data)
-	day := float64(time.Now().Day())
-	rxEst := rxGB * (30.0 / day)
-	txEst := txGB * (30.0 / day)
 
 	dotLabel("Bandwidth (rx)")
 	fmt.Printf("%s%.2f GB / %.2f GB est%s\n", BLUE, rxGB, rxEst, RESET)
@@ -529,82 +725,191 @@ func showTemp() {
 	}
 }
 
+type plexSessionsResponse struct {
+	Size   int `xml:"size,attr"`
+	Videos []struct {
+		TranscodeSession struct {
+			VideoDecision string `xml:"videoDecision,attr"`
+		} `xml:"TranscodeSession"`
+		Session struct {
+			Bandwidth int `xml:"bandwidth,attr"`
+		} `xml:"Session"`
+	} `xml:"Video"`
+}
+
+type jellyfinSession struct {
+	NowPlayingItem  json.RawMessage `json:"NowPlayingItem"`
+	TranscodingInfo *struct {
+		Bitrate int64 `json:"Bitrate"`
+	} `json:"TranscodingInfo,omitempty"`
+	PlayState struct {
+		PlayMethod string `json:"PlayMethod"`
+	} `json:"PlayState"`
+}
+
+type arrWantedMissingResponse struct {
+	TotalRecords int               `json:"totalRecords"`
+	Records      []json.RawMessage `json:"records"`
+}
+
+type seerrRequestCountResponse struct {
+	Pending int `json:"pending"`
+}
+
+func fetchSeerrPendingCount(client *http.Client, baseURL, apiKey string) (int, error) {
+	req, err := http.NewRequest("GET", serviceURL(baseURL, "/api/v1/request/count"), nil)
+	if err != nil {
+		return 0, err
+	}
+	req.Header.Set("X-Api-Key", apiKey)
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return 0, err
+	}
+	defer resp.Body.Close()
+
+	var result seerrRequestCountResponse
+	if err := decodeJSONResponse(resp, &result); err != nil {
+		return 0, err
+	}
+
+	return result.Pending, nil
+}
+
+func serviceLabel(base, name string) string {
+	if name != "" && name != "Default" {
+		return fmt.Sprintf("%s (%s)", base, name)
+	}
+	return base
+}
+
+func serviceURL(baseURL, path string) string {
+	return strings.TrimRight(baseURL, "/") + path
+}
+
+func hasNowPlayingItem(raw json.RawMessage) bool {
+	if len(raw) == 0 {
+		return false
+	}
+	return strings.TrimSpace(string(raw)) != "null"
+}
+
+func decodeJSONResponse(resp *http.Response, target interface{}) error {
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("unexpected status %d", resp.StatusCode)
+	}
+
+	decoder := json.NewDecoder(resp.Body)
+	if err := decoder.Decode(target); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func parseARRMissingCount(data arrWantedMissingResponse) int {
+	if data.TotalRecords > 0 {
+		return data.TotalRecords
+	}
+	return len(data.Records)
+}
+
+func parseJellyfinSessions(sessions []jellyfinSession) (int, int, float64, bool) {
+	active := 0
+	transcodes := 0
+	totalBitrate := int64(0)
+	hasBitrate := false
+
+	for _, session := range sessions {
+		if !hasNowPlayingItem(session.NowPlayingItem) {
+			continue
+		}
+
+		active++
+		if strings.EqualFold(session.PlayState.PlayMethod, "Transcode") {
+			transcodes++
+		}
+
+		if session.TranscodingInfo != nil && session.TranscodingInfo.Bitrate > 0 {
+			totalBitrate += session.TranscodingInfo.Bitrate
+			hasBitrate = true
+		}
+	}
+
+	mbps := float64(totalBitrate) / 1000000.0
+	return active, transcodes, mbps, hasBitrate
+}
+
+func pluralSuffix(count int) string {
+	if count == 1 {
+		return ""
+	}
+	return "s"
+}
+
 func showPlex() {
 	if len(config.Services.Plex) == 0 {
 		return
-	}
-
-	// Parse XML structure
-	type MediaContainer struct {
-		Size   int `xml:"size,attr"`
-		Videos []struct {
-			TranscodeSession struct {
-				VideoDecision string `xml:"videoDecision,attr"`
-			} `xml:"TranscodeSession"`
-			Session struct {
-				Bandwidth int `xml:"bandwidth,attr"`
-			} `xml:"Session"`
-		} `xml:"Video"`
 	}
 
 	for _, plex := range config.Services.Plex {
 		if !plex.Enabled || plex.Token == "" {
 			continue
 		}
-
-		url := fmt.Sprintf("%s/status/sessions?X-Plex-Token=%s", plex.URL, plex.Token)
-		resp, err := httpClient.Get(url)
-		if err != nil {
-			debugLog("Plex request failed for %s: %v", plex.Name, err)
-			continue
-		}
-		defer resp.Body.Close()
-
-		if resp.StatusCode != http.StatusOK {
-			debugLog("Plex returned status %d for %s", resp.StatusCode, plex.Name)
-			continue
-		}
-
-		body, err := io.ReadAll(resp.Body)
-		if err != nil {
-			debugLog("Failed to read Plex response for %s: %v", plex.Name, err)
-			continue
-		}
-
-		var container MediaContainer
-		if err := xml.Unmarshal(body, &container); err != nil {
-			debugLog("Failed to parse Plex XML for %s: %v", plex.Name, err)
-			continue
-		}
-
-		count := container.Size
-		tcount := 0
-		bw := 0
-
-		for _, video := range container.Videos {
-			if video.TranscodeSession.VideoDecision == "transcode" {
-				tcount++
-			}
-			bw += video.Session.Bandwidth
-		}
-
-		bwMbps := float64(bw) / 1000.0
-
-		// Display with instance name
-		label := "Plex"
-		if plex.Name != "Default" {
-			label = fmt.Sprintf("Plex (%s)", plex.Name)
-		}
-
-		dotLabel(label)
-		if count == 0 {
-			fmt.Printf("%sNo active streams%s\n", GREEN, RESET)
-		} else if tcount == 0 {
-			fmt.Printf("%s%d streams (%.2f Mbps)%s\n", YELLOW, count, bwMbps, RESET)
-		} else {
-			fmt.Printf("%s%d streams, %d transcodes (%.2f Mbps)%s\n", RED, count, tcount, bwMbps, RESET)
-		}
+		showPlexInstance(plex)
 	}
+}
+
+func showPlexInstance(plex ServiceConfig) {
+	req, err := http.NewRequest("GET", serviceURL(plex.URL, "/status/sessions"), nil)
+	if err != nil {
+		debugLog("Plex request failed for %s: %v", plex.Name, err)
+		return
+	}
+	req.Header.Set("X-Plex-Token", plex.Token)
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		debugLog("Plex request failed for %s: %v", plex.Name, err)
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		debugLog("Plex returned status %d for %s", resp.StatusCode, plex.Name)
+		return
+	}
+
+	var sessions plexSessionsResponse
+	if err := xml.NewDecoder(resp.Body).Decode(&sessions); err != nil {
+		debugLog("Failed to parse Plex XML for %s: %v", plex.Name, err)
+		return
+	}
+
+	transcodes := 0
+	bandwidth := 0
+	for _, video := range sessions.Videos {
+		if video.TranscodeSession.VideoDecision == "transcode" {
+			transcodes++
+		}
+		bandwidth += video.Session.Bandwidth
+	}
+
+	label := serviceLabel("Plex", plex.Name)
+	dotLabel(label)
+	if sessions.Size == 0 {
+		fmt.Printf("%sNo active streams%s\n", GREEN, RESET)
+		return
+	}
+
+	bwMbps := float64(bandwidth) / 1000.0
+	if transcodes == 0 {
+		fmt.Printf("%s%d streams (%.2f Mbps)%s\n", YELLOW, sessions.Size, bwMbps, RESET)
+		return
+	}
+
+	fmt.Printf("%s%d streams, %d transcodes (%.2f Mbps)%s\n", RED, sessions.Size, transcodes, bwMbps, RESET)
 }
 
 func showJellyfin() {
@@ -616,68 +921,56 @@ func showJellyfin() {
 		if !jellyfin.Enabled || jellyfin.Token == "" {
 			continue
 		}
-
-		req, err := http.NewRequest("GET", jellyfin.URL+"/Sessions", nil)
-		if err != nil {
-			debugLog("Jellyfin request failed for %s: %v", jellyfin.Name, err)
-			continue
-		}
-		req.Header.Set("X-Emby-Token", jellyfin.Token)
-
-		resp, err := httpClient.Do(req)
-		if err != nil {
-			debugLog("Jellyfin request failed for %s: %v", jellyfin.Name, err)
-			continue
-		}
-		defer resp.Body.Close()
-
-		if resp.StatusCode != http.StatusOK {
-			debugLog("Jellyfin returned status %d for %s", resp.StatusCode, jellyfin.Name)
-			continue
-		}
-
-		body, err := io.ReadAll(resp.Body)
-		if err != nil {
-			debugLog("Failed to read Jellyfin response for %s: %v", jellyfin.Name, err)
-			continue
-		}
-
-		var sessions []map[string]interface{}
-		if err := json.Unmarshal(body, &sessions); err != nil {
-			debugLog("Failed to parse Jellyfin JSON for %s: %v", jellyfin.Name, err)
-			continue
-		}
-
-		count := 0
-		tcount := 0
-		bw := 0.0
-
-		for _, session := range sessions {
-			if session["NowPlayingItem"] != nil {
-				count++
-				if playState, ok := session["PlayState"].(map[string]interface{}); ok {
-					if playMethod, ok := playState["PlayMethod"].(string); ok && playMethod == "Transcode" {
-						tcount++
-					}
-				}
-			}
-		}
-
-		// Display with instance name
-		label := "Jellyfin"
-		if jellyfin.Name != "Default" {
-			label = fmt.Sprintf("Jellyfin (%s)", jellyfin.Name)
-		}
-
-		dotLabel(label)
-		if count == 0 {
-			fmt.Printf("%sNo active streams%s\n", GREEN, RESET)
-		} else if tcount == 0 {
-			fmt.Printf("%s%d streams (%.2f Mbps)%s\n", YELLOW, count, bw, RESET)
-		} else {
-			fmt.Printf("%s%d streams, %d transcodes (%.2f Mbps)%s\n", RED, count, tcount, bw, RESET)
-		}
+		showJellyfinInstance(jellyfin)
 	}
+}
+
+func showJellyfinInstance(jellyfin ServiceConfig) {
+	req, err := http.NewRequest("GET", serviceURL(jellyfin.URL, "/Sessions"), nil)
+	if err != nil {
+		debugLog("Jellyfin request build failed for %s: %v", jellyfin.Name, err)
+		return
+	}
+	req.Header.Set("X-Emby-Token", jellyfin.Token)
+	req.Header.Set("Authorization", "MediaBrowser Token=\""+jellyfin.Token+"\"")
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		debugLog("Jellyfin request failed for %s: %v", jellyfin.Name, err)
+		return
+	}
+	defer resp.Body.Close()
+
+	var sessions []jellyfinSession
+	if err := decodeJSONResponse(resp, &sessions); err != nil {
+		debugLog("Failed to decode Jellyfin response for %s: %v", jellyfin.Name, err)
+		return
+	}
+
+	count, transcodes, bwMbps, hasBW := parseJellyfinSessions(sessions)
+	label := serviceLabel("Jellyfin", jellyfin.Name)
+	dotLabel(label)
+
+	if count == 0 {
+		fmt.Printf("%sNo active streams%s\n", GREEN, RESET)
+		return
+	}
+
+	if transcodes == 0 {
+		if hasBW {
+			fmt.Printf("%s%d streams (%.2f Mbps)%s\n", YELLOW, count, bwMbps, RESET)
+		} else {
+			fmt.Printf("%s%d streams%s\n", YELLOW, count, RESET)
+		}
+		return
+	}
+
+	if hasBW {
+		fmt.Printf("%s%d streams, %d transcodes (%.2f Mbps)%s\n", RED, count, transcodes, bwMbps, RESET)
+		return
+	}
+
+	fmt.Printf("%s%d streams, %d transcodes%s\n", RED, count, transcodes, RESET)
 }
 
 func showSonarr() {
@@ -689,54 +982,40 @@ func showSonarr() {
 		if !sonarr.Enabled || sonarr.APIKey == "" {
 			continue
 		}
-
-		url := fmt.Sprintf("%s/api/v3/wanted/missing?apikey=%s", sonarr.URL, sonarr.APIKey)
-		resp, err := httpClient.Get(url)
-		if err != nil {
-			debugLog("Sonarr request failed for %s: %v", sonarr.Name, err)
-			continue
-		}
-		defer resp.Body.Close()
-
-		if resp.StatusCode != http.StatusOK {
-			debugLog("Sonarr returned status %d for %s", resp.StatusCode, sonarr.Name)
-			continue
-		}
-
-		body, err := io.ReadAll(resp.Body)
-		if err != nil {
-			debugLog("Failed to read Sonarr response for %s: %v", sonarr.Name, err)
-			continue
-		}
-
-		var result struct {
-			Records []interface{} `json:"records"`
-		}
-
-		if err := json.Unmarshal(body, &result); err != nil {
-			debugLog("Failed to parse Sonarr JSON for %s: %v", sonarr.Name, err)
-			continue
-		}
-
-		count := len(result.Records)
-
-		// Display with instance name
-		label := "Sonarr"
-		if sonarr.Name != "Default" {
-			label = fmt.Sprintf("Sonarr (%s)", sonarr.Name)
-		}
-
-		dotLabel(label)
-		if count == 0 {
-			fmt.Printf("%sNo missing episodes%s\n", GREEN, RESET)
-		} else {
-			plural := ""
-			if count != 1 {
-				plural = "s"
-			}
-			fmt.Printf("%s%d missing episode%s%s\n", YELLOW, count, plural, RESET)
-		}
+		showSonarrInstance(sonarr)
 	}
+}
+
+func showSonarrInstance(sonarr ServiceConfig) {
+	req, err := http.NewRequest("GET", serviceURL(sonarr.URL, "/api/v3/wanted/missing"), nil)
+	if err != nil {
+		debugLog("Sonarr request build failed for %s: %v", sonarr.Name, err)
+		return
+	}
+	req.Header.Set("X-Api-Key", sonarr.APIKey)
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		debugLog("Sonarr request failed for %s: %v", sonarr.Name, err)
+		return
+	}
+	defer resp.Body.Close()
+
+	var result arrWantedMissingResponse
+	if err := decodeJSONResponse(resp, &result); err != nil {
+		debugLog("Failed to decode Sonarr response for %s: %v", sonarr.Name, err)
+		return
+	}
+
+	count := parseARRMissingCount(result)
+	label := serviceLabel("Sonarr", sonarr.Name)
+	dotLabel(label)
+	if count == 0 {
+		fmt.Printf("%sNo missing episodes%s\n", GREEN, RESET)
+		return
+	}
+
+	fmt.Printf("%s%d missing episode%s%s\n", YELLOW, count, pluralSuffix(count), RESET)
 }
 
 func showRadarr() {
@@ -748,136 +1027,79 @@ func showRadarr() {
 		if !radarr.Enabled || radarr.APIKey == "" {
 			continue
 		}
-
-		url := fmt.Sprintf("%s/api/v3/wanted/missing?apikey=%s", radarr.URL, radarr.APIKey)
-		resp, err := httpClient.Get(url)
-		if err != nil {
-			debugLog("Radarr request failed for %s: %v", radarr.Name, err)
-			continue
-		}
-		defer resp.Body.Close()
-
-		if resp.StatusCode != http.StatusOK {
-			debugLog("Radarr returned status %d for %s", resp.StatusCode, radarr.Name)
-			continue
-		}
-
-		body, err := io.ReadAll(resp.Body)
-		if err != nil {
-			debugLog("Failed to read Radarr response for %s: %v", radarr.Name, err)
-			continue
-		}
-
-		var result struct {
-			Records []map[string]interface{} `json:"records"`
-		}
-
-		if err := json.Unmarshal(body, &result); err != nil {
-			debugLog("Failed to parse Radarr JSON for %s: %v", radarr.Name, err)
-			continue
-		}
-
-		count := 0
-		for _, record := range result.Records {
-			if isAvail, ok := record["isAvailable"].(bool); ok && isAvail {
-				count++
-			}
-		}
-
-		// Display with instance name
-		label := "Radarr"
-		if radarr.Name != "Default" {
-			label = fmt.Sprintf("Radarr (%s)", radarr.Name)
-		}
-
-		dotLabel(label)
-		if count == 0 {
-			fmt.Printf("%sNo missing movies%s\n", GREEN, RESET)
-		} else {
-			plural := ""
-			if count != 1 {
-				plural = "s"
-			}
-			fmt.Printf("%s%d missing movie%s%s\n", YELLOW, count, plural, RESET)
-		}
+		showRadarrInstance(radarr)
 	}
 }
 
-func showOrganizr() {
-	if len(config.Services.Organizr) == 0 {
+func showRadarrInstance(radarr ServiceConfig) {
+	req, err := http.NewRequest("GET", serviceURL(radarr.URL, "/api/v3/wanted/missing"), nil)
+	if err != nil {
+		debugLog("Radarr request build failed for %s: %v", radarr.Name, err)
+		return
+	}
+	req.Header.Set("X-Api-Key", radarr.APIKey)
+
+	resp, err := httpClient.Do(req)
+	if err != nil {
+		debugLog("Radarr request failed for %s: %v", radarr.Name, err)
+		return
+	}
+	defer resp.Body.Close()
+
+	var result arrWantedMissingResponse
+	if err := decodeJSONResponse(resp, &result); err != nil {
+		debugLog("Failed to decode Radarr response for %s: %v", radarr.Name, err)
 		return
 	}
 
-	for _, organizr := range config.Services.Organizr {
-		if !organizr.Enabled || organizr.APIKey == "" {
-			continue
-		}
-
-		req, err := http.NewRequest("GET", organizr.URL+"/api/v2/requests", nil)
-		if err != nil {
-			debugLog("Organizr request failed for %s: %v", organizr.Name, err)
-			continue
-		}
-		req.Header.Set("Authorization", "Bearer "+organizr.APIKey)
-
-		resp, err := httpClient.Do(req)
-		if err != nil {
-			debugLog("Organizr request failed for %s: %v", organizr.Name, err)
-			continue
-		}
-		defer resp.Body.Close()
-
-		if resp.StatusCode != http.StatusOK {
-			debugLog("Organizr returned status %d for %s", resp.StatusCode, organizr.Name)
-			continue
-		}
-
-		body, err := io.ReadAll(resp.Body)
-		if err != nil {
-			debugLog("Failed to read Organizr response for %s: %v", organizr.Name, err)
-			continue
-		}
-
-		var result struct {
-			Data struct {
-				Total int `json:"total"`
-			} `json:"data"`
-		}
-
-		if err := json.Unmarshal(body, &result); err != nil {
-			debugLog("Failed to parse Organizr JSON for %s: %v", organizr.Name, err)
-			continue
-		}
-
-		count := result.Data.Total
-
-		// Display with instance name
-		label := "Organizr"
-		if organizr.Name != "Default" {
-			label = fmt.Sprintf("Organizr (%s)", organizr.Name)
-		}
-
-		dotLabel(label)
-		if count == 0 {
-			fmt.Printf("%sNo requests%s\n", GREEN, RESET)
-		} else {
-			plural := ""
-			if count != 1 {
-				plural = "s"
-			}
-			fmt.Printf("%s%d request%s%s\n", YELLOW, count, plural, RESET)
-		}
+	count := parseARRMissingCount(result)
+	label := serviceLabel("Radarr", radarr.Name)
+	dotLabel(label)
+	if count == 0 {
+		fmt.Printf("%sNo missing movies%s\n", GREEN, RESET)
+		return
 	}
+
+	fmt.Printf("%s%d missing movie%s%s\n", YELLOW, count, pluralSuffix(count), RESET)
+}
+
+func showSeerr() {
+	if len(config.Services.Seerr) == 0 {
+		return
+	}
+
+	for _, seerr := range config.Services.Seerr {
+		if !seerr.Enabled || seerr.APIKey == "" {
+			continue
+		}
+		showSeerrInstance(seerr)
+	}
+}
+
+func showSeerrInstance(seerr ServiceConfig) {
+	pending, err := fetchSeerrPendingCount(httpClient, seerr.URL, seerr.APIKey)
+	if err != nil {
+		debugLog("Seerr request failed for %s: %v", seerr.Name, err)
+		return
+	}
+
+	label := serviceLabel("Seerr", seerr.Name)
+	dotLabel(label)
+	if pending == 0 {
+		fmt.Printf("%sNo pending requests%s\n", GREEN, RESET)
+		return
+	}
+
+	fmt.Printf("%s%d pending request%s%s\n", YELLOW, pending, pluralSuffix(pending), RESET)
 }
 
 // Helper functions
 func getUserHome() string {
-	usr, err := user.Current()
+	home, err := os.UserHomeDir()
 	if err != nil {
-		// Fallback to HOME environment variable if user.Current() fails
-		return os.Getenv("HOME")
+		return ""
 	}
-	return usr.HomeDir
+	return home
 }
 
 func hasCommand(cmd string) bool {
@@ -1305,7 +1527,3 @@ del "%s"
 
 	return nil
 }
-
-// Test feature for version increment verification
-// Minor fix for testing release workflow
-// CI test commit - should not trigger release

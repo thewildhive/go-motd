@@ -15,7 +15,7 @@ RESET='\033[0m'
 
 # Default installation directory
 INSTALL_DIR="${INSTALL_DIR:-/usr/local/bin}"
-CONFIG_DIR="${CONFIG_DIR:-/etc/motd.d}"
+CONFIG_DIR="${CONFIG_DIR:-$HOME/.config/motd}"
 
 # Function to print colored output
 print_info() {
@@ -74,6 +74,18 @@ detect_platform() {
     echo "${OS}-${ARCH}"
 }
 
+download_artifact_name() {
+    local platform="$1"
+    case "$platform" in
+        linux-amd64) echo "motd-linux-amd64" ;;
+        linux-arm64) echo "motd-linux-arm64" ;;
+        darwin-amd64) echo "motd-darwin-amd64" ;;
+        darwin-arm64) echo "motd-darwin-arm64" ;;
+        windows-amd64) echo "motd-windows-amd64.exe" ;;
+        *) echo "" ;;
+    esac
+}
+
 # Function to get latest release version
 get_latest_version() {
     local api_url="https://api.github.com/repos/thewildhive/go-motd/releases/latest"
@@ -101,6 +113,17 @@ install_motd() {
     local version="$1"
     local platform="$2"
     local filename="motd-${version}-${platform}.tar.gz"
+    local artifact
+    artifact=$(download_artifact_name "$platform")
+    if [ -z "$artifact" ]; then
+        print_error "Unsupported release artifact for platform: $platform"
+        exit 1
+    fi
+
+    if [[ "$platform" == windows-* ]]; then
+        filename="motd-${version}-${platform}.zip"
+    fi
+
     local download_url="https://github.com/thewildhive/go-motd/releases/download/v${version}/${filename}"
     local temp_dir=$(mktemp -d)
     
@@ -119,14 +142,22 @@ install_motd() {
     # Extract and install
     print_info "Extracting and installing..."
     cd "$temp_dir"
-    tar -xzf "$filename"
+    if [[ "$filename" == *.zip ]]; then
+        if ! command -v unzip >/dev/null 2>&1; then
+            print_error "unzip is required to extract Windows archives"
+            exit 1
+        fi
+        unzip -q "$filename"
+    else
+        tar -xzf "$filename"
+    fi
     
     # Check if we have write permission to install directory
     if [ ! -w "$(dirname "$INSTALL_DIR")" ] && [ ! -w "$INSTALL_DIR" ]; then
         print_warning "No write permission to $INSTALL_DIR, trying with sudo..."
         if command -v sudo >/dev/null 2>&1; then
             sudo mkdir -p "$INSTALL_DIR"
-            sudo cp motd "$INSTALL_DIR/"
+            sudo cp "$artifact" "$INSTALL_DIR/motd"
             sudo chmod +x "$INSTALL_DIR/motd"
         else
             print_error "No write permission and sudo not available"
@@ -134,7 +165,7 @@ install_motd() {
         fi
     else
         mkdir -p "$INSTALL_DIR"
-        cp motd "$INSTALL_DIR/"
+        cp "$artifact" "$INSTALL_DIR/motd"
         chmod +x "$INSTALL_DIR/motd"
     fi
     
@@ -147,7 +178,7 @@ install_motd() {
 
 # Function to create sample config
 create_sample_config() {
-    local config_file="$CONFIG_DIR/default.yml"
+    local config_file="$CONFIG_DIR/config.json"
     
     if [ ! -f "$config_file" ]; then
         print_info "Creating sample configuration at $config_file..."
@@ -156,19 +187,22 @@ create_sample_config() {
             if command -v sudo >/dev/null 2>&1; then
                 sudo mkdir -p "$CONFIG_DIR"
                 sudo tee "$config_file" > /dev/null << 'EOF'
-# motd configuration
-# See https://github.com/thewildhive/go-motd for more options
-
-title: "Welcome!"
-sections:
-  - type: "text"
-    content: "System Information"
-  - type: "command"
-    command: "uname -a"
-  - type: "text"
-    content: "Disk Usage:"
-  - type: "command"
-    command: "df -h"
+{
+  "services": {
+    "plex": [],
+    "jellyfin": [],
+    "sonarr": [],
+    "radarr": [],
+    "seerr": []
+  },
+  "system": {
+    "compose_dir": "/opt/apps/compose",
+    "tank_mount": "/mnt/tank",
+    "network": {
+      "interface": "eth0"
+    }
+  }
+}
 EOF
             else
                 print_warning "Cannot create config file without sudo permissions"
@@ -176,19 +210,22 @@ EOF
         else
             mkdir -p "$CONFIG_DIR"
             cat > "$config_file" << 'EOF'
-# motd configuration
-# See https://github.com/thewildhive/go-motd for more options
-
-title: "Welcome!"
-sections:
-  - type: "text"
-    content: "System Information"
-  - type: "command"
-    command: "uname -a"
-  - type: "text"
-    content: "Disk Usage:"
-  - type: "command"
-    command: "df -h"
+{
+  "services": {
+    "plex": [],
+    "jellyfin": [],
+    "sonarr": [],
+    "radarr": [],
+    "seerr": []
+  },
+  "system": {
+    "compose_dir": "/opt/apps/compose",
+    "tank_mount": "/mnt/tank",
+    "network": {
+      "interface": "eth0"
+    }
+  }
+}
 EOF
         fi
         
@@ -218,9 +255,9 @@ main() {
     echo
     print_info "Usage:"
     echo "  $INSTALL_DIR/motd                    # Run with default config"
-    echo "  $INSTALL_DIR/motd -c /path/to/config  # Run with custom config"
+    echo "  $INSTALL_DIR/motd -h                 # Show available options"
     echo
-    print_info "Configuration directory: $CONFIG_DIR"
+    print_info "Configuration file: $CONFIG_DIR/config.json"
     print_info "For more information: https://github.com/thewildhive/go-motd"
 }
 
@@ -233,7 +270,7 @@ if [ "$1" = "--help" ] || [ "$1" = "-h" ]; then
     echo "Options:"
     echo "  -h, --help              Show this help message"
     echo "  -d, --dir DIR           Install to specific directory (default: /usr/local/bin)"
-    echo "  -c, --config-dir DIR    Config directory (default: /etc/motd.d)"
+    echo "  -c, --config-dir DIR    Config directory (default: ~/.config/motd)"
     echo
     echo "Environment variables:"
     echo "  INSTALL_DIR              Installation directory"
