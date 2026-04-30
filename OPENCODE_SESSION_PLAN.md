@@ -14,6 +14,17 @@ go run . -h
 
 Then use this plan section-by-section.
 
+## Clean-Slate Execution Rule
+
+Treat every task as unverified. Do not trust prior checkmarks or status claims.
+
+Before marking any item complete in a new session:
+1. Re-verify current repository state directly (files + commands + tests).
+2. Re-run the relevant checks for that task.
+3. Record evidence (command output, file diff, or test result).
+
+Only then mark the task done.
+
 ## Scope and Product Decisions (Locked)
 
 1. Breaking change: JSON-only config.
@@ -30,38 +41,38 @@ Then use this plan section-by-section.
 
 ## Master Todo List (Complete, Granular)
 
-Status legend: `[x]=done`, `[ ]=pending`, `[-]=blocked by environment`.
+Status legend: `[ ]=not yet verified`, `[-]=blocked by environment`.
 
-- [x] T01 Lock scope and acceptance criteria (JSON-only, Seerr-only, remove Organizr, no aliases).
-- [x] T02 Capture baseline behavior snapshot (`-h`, `-v`, missing-config behavior).
-- [x] T03 Refactor code boundaries for testability (helper extract for parsing/request logic).
-- [x] T04 Replace YAML tags/loaders with strict stdlib JSON loader.
-- [x] T05 Add explicit legacy YAML detection and migration error messaging.
-- [x] T06 Switch config paths to `~/.config/motd/config.json` and `/opt/motd/config.json`.
-- [x] T07 Remove `gopkg.in/yaml.v3` dependency from modules.
-- [x] T08 Replace config artifacts with JSON equivalents.
-- [x] T09 Remove Organizr from schema, checks, output, and runtime behavior.
-- [x] T10 Implement Seerr integration via `/api/v1/request/count` + `X-Api-Key`.
-- [x] T11 Define Seerr output formatting and pluralization.
-- [x] T12 Fix HTTP response-body lifecycle by scoping request handlers.
-- [x] T13 Harden Sonarr/Radarr counting via `totalRecords` fallback logic.
-- [x] T14 Harden Jellyfin parsing (typed structs, no fake bandwidth).
-- [x] T15 Improve vnstat parsing/interface selection reliability.
-- [x] T16 Make `VERSION` linker-settable (`var`, supports `-X main.VERSION=...`).
-- [x] T17 Repair installer to emit valid JSON config and remove stale behavior.
-- [x] T18 Clean/sync docs (`README.md`, `INSTALL.md`, `AGENT.md`) for JSON + Seerr.
-- [x] T19 Deduplicate `INSTALL.md` to one canonical path.
+- [ ] T01 Lock scope and acceptance criteria (JSON-only, Seerr-only, remove Organizr, no aliases).
+- [ ] T02 Capture baseline behavior snapshot (`-h`, `-v`, missing-config behavior).
+- [ ] T03 Refactor code boundaries for testability (helper extract for parsing/request logic).
+- [ ] T04 Replace YAML tags/loaders with strict stdlib JSON loader.
+- [ ] T05 Add explicit legacy YAML detection and migration error messaging.
+- [ ] T06 Switch config paths to `~/.config/motd/config.json` and `/opt/motd/config.json`.
+- [ ] T07 Remove `gopkg.in/yaml.v3` dependency from modules.
+- [ ] T08 Replace config artifacts with JSON equivalents.
+- [ ] T09 Remove Organizr from schema, checks, output, and runtime behavior.
+- [ ] T10 Implement Seerr integration via `/api/v1/request/count` + `X-Api-Key`.
+- [ ] T11 Define Seerr output formatting and pluralization.
+- [ ] T12 Fix HTTP response-body lifecycle by scoping request handlers.
+- [ ] T13 Harden Sonarr/Radarr counting via `totalRecords` fallback logic.
+- [ ] T14 Harden Jellyfin parsing (typed structs, no fake bandwidth).
+- [ ] T15 Improve vnstat parsing/interface selection reliability.
+- [ ] T16 Make `VERSION` linker-settable (`var`, supports `-X main.VERSION=...`).
+- [ ] T17 Repair installer to emit valid JSON config and remove stale behavior.
+- [ ] T18 Clean/sync docs (`README.md`, `INSTALL.md`, `AGENT.md`) for JSON + Seerr.
+- [ ] T19 Deduplicate `INSTALL.md` to one canonical path.
 - [ ] T20 Harden release workflow (`.github/workflows/release.yml`) to remove conflicting logic.
 - [ ] T21 Align `.releaserc.json` and release docs with actual release process.
-- [x] T22 Add unit tests for JSON loader success/failure/unknown fields.
-- [x] T23 Add unit tests for legacy YAML migration detection.
-- [x] T24 Add unit tests for Seerr API decode path (`httptest`).
-- [x] T25 Add unit tests for Sonarr/Radarr count parsing helpers.
-- [x] T26 Add unit tests for Jellyfin parser behavior.
-- [x] T27 Add unit tests for vnstat parser behavior.
-- [x] T28 Add unit tests for version/platform helper behavior.
+- [ ] T22 Add unit tests for JSON loader success/failure/unknown fields.
+- [ ] T23 Add unit tests for legacy YAML migration detection.
+- [ ] T24 Add unit tests for Seerr API decode path (`httptest`).
+- [ ] T25 Add unit tests for Sonarr/Radarr count parsing helpers.
+- [ ] T26 Add unit tests for Jellyfin parser behavior.
+- [ ] T27 Add unit tests for vnstat parser behavior.
+- [ ] T28 Add unit tests for version/platform helper behavior.
 - [ ] T29 Final no-`TODO`/`FIXME` scan after all remaining edits complete.
-- [x] T30 Run quality gates: `gofmt -l`, `go vet`, `go test`, `go build`.
+- [ ] T30 Run quality gates: `gofmt -l`, `go vet`, `go test`, `go build`.
 - [-] T31 Run race tests (`go test -race ./...`) - blocked locally due missing `gcc`/CGO toolchain.
 - [ ] T32 Run final scenario validation pass (manual end-to-end checks for sample JSON + legacy YAML + missing config).
 - [ ] T33 Prepare final migration notes + verification report for handoff.
