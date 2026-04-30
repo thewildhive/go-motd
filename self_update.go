@@ -144,7 +144,7 @@ func performUpdate(release *GitHubRelease, version string) error {
 
 	var downloadURL string
 	for _, asset := range release.Assets {
-		if strings.Contains(asset.Name, assetName) {
+		if asset.Name == assetName {
 			downloadURL = asset.URL
 			break
 		}
@@ -159,7 +159,12 @@ func performUpdate(release *GitHubRelease, version string) error {
 		return fmt.Errorf("failed to get checksums: %w", err)
 	}
 
-	tempFile, err := downloadBinary(downloadURL, assetName, checksums)
+	execPath, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("failed to get executable path: %w", err)
+	}
+
+	tempFile, err := downloadBinary(downloadURL, assetName, checksums, filepath.Dir(execPath))
 	if err != nil {
 		return fmt.Errorf("failed to download binary: %w", err)
 	}
@@ -170,18 +175,18 @@ func performUpdate(release *GitHubRelease, version string) error {
 		}
 	}()
 
-	execPath, err := os.Executable()
-	if err != nil {
-		return fmt.Errorf("failed to get executable path: %w", err)
-	}
-
 	backupPath := execPath + ".backup"
 	if err := copyFile(execPath, backupPath); err != nil {
 		return fmt.Errorf("failed to create backup: %w", err)
 	}
-	defer os.Remove(backupPath)
+	removeBackup := runtime.GOOS != "windows"
+	defer func() {
+		if removeBackup {
+			_ = os.Remove(backupPath)
+		}
+	}()
 
-	if err := replaceBinary(tempFile, execPath); err != nil {
+	if err := replaceBinary(tempFile, execPath, backupPath); err != nil {
 		if rollbackErr := restoreBackup(backupPath, execPath); rollbackErr != nil {
 			return fmt.Errorf("update failed and rollback failed: %v (rollback error: %v)", err, rollbackErr)
 		}
@@ -257,17 +262,26 @@ func getChecksums(release *GitHubRelease) (map[string]string, error) {
 		if line == "" {
 			continue
 		}
-		parts := strings.Fields(line)
-		if len(parts) >= 2 {
-			checksums[parts[1]] = parts[0]
+		checksum, filename, ok := parseChecksumLine(line)
+		if ok {
+			checksums[filename] = checksum
 		}
 	}
 
 	return checksums, nil
 }
 
-func downloadBinary(url, filename string, checksums map[string]string) (string, error) {
-	tempFile, err := os.CreateTemp("", "motd-update-*.tmp")
+func parseChecksumLine(line string) (string, string, bool) {
+	parts := strings.Fields(line)
+	if len(parts) < 2 {
+		return "", "", false
+	}
+
+	return parts[0], strings.TrimPrefix(parts[1], "*"), true
+}
+
+func downloadBinary(url, filename string, checksums map[string]string, tempDir string) (string, error) {
+	tempFile, err := os.CreateTemp(tempDir, "motd-update-*.tmp")
 	if err != nil {
 		return "", fmt.Errorf("failed to create temp file: %w", err)
 	}
@@ -303,18 +317,24 @@ func downloadBinary(url, filename string, checksums map[string]string) (string, 
 	return tempFile.Name(), nil
 }
 
-func replaceBinary(tempPath, execPath string) error {
+func replaceBinary(tempPath, execPath, backupPath string) error {
 	if err := os.Chmod(tempPath, 0755); err != nil {
 		return fmt.Errorf("failed to make binary executable: %w", err)
 	}
 
 	if runtime.GOOS == "windows" {
 		batPath := filepath.Join(os.TempDir(), "motd-update.bat")
+		tempBatchPath := windowsBatchPath(tempPath)
+		execBatchPath := windowsBatchPath(execPath)
+		backupBatchPath := windowsBatchPath(backupPath)
+		batBatchPath := windowsBatchPath(batPath)
 		batContent := fmt.Sprintf(`@echo off
 timeout /t 1 /nobreak >nul
 move /Y "%s" "%s"
+if errorlevel 1 exit /b 1
 del "%s"
-`, tempPath, execPath, batPath)
+del "%s"
+`, tempBatchPath, execBatchPath, backupBatchPath, batBatchPath)
 
 		if err := os.WriteFile(batPath, []byte(batContent), 0644); err != nil {
 			return fmt.Errorf("failed to create update script: %w", err)
@@ -334,6 +354,10 @@ del "%s"
 	}
 
 	return nil
+}
+
+func windowsBatchPath(filePath string) string {
+	return strings.ReplaceAll(filepath.ToSlash(filePath), "/", "\\")
 }
 
 func restoreBackup(backupPath, execPath string) error {

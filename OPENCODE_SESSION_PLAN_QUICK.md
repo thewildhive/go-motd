@@ -65,7 +65,7 @@ go run . -h
 gofmt -l .
 go vet ./...
 go test ./...
-go build -o bin/motd main.go
+go build -buildvcs=false -o bin/motd .
 ```
 
 Race test when environment supports CGO compiler:

@@ -3,7 +3,7 @@
 # Install script for go-motd
 # Downloads and installs the latest release from GitHub
 
-set -e
+set -euo pipefail
 
 # Colors for output
 RED='\033[0;31m'
@@ -46,9 +46,6 @@ detect_platform() {
         darwin)
             OS="darwin"
             ;;
-        freebsd)
-            OS="freebsd"
-            ;;
         *)
             print_error "Unsupported OS: $os"
             exit 1
@@ -61,9 +58,6 @@ detect_platform() {
             ;;
         aarch64|arm64)
             ARCH="arm64"
-            ;;
-        armv7l|arm)
-            ARCH="arm"
             ;;
         *)
             print_error "Unsupported architecture: $arch"
@@ -108,12 +102,47 @@ get_latest_version() {
     echo "$version"
 }
 
+download_file() {
+    local url="$1"
+    local output="$2"
+
+    if command -v curl >/dev/null 2>&1; then
+        curl -fsSL -o "$output" "$url"
+    elif command -v wget >/dev/null 2>&1; then
+        wget -qO "$output" "$url"
+    else
+        print_error "Neither curl nor wget is available"
+        exit 1
+    fi
+}
+
+verify_checksum() {
+    local checksum_file="$1"
+    local filename="$2"
+
+    if ! command -v sha256sum >/dev/null 2>&1; then
+        print_warning "sha256sum is not available; skipping checksum verification"
+        return
+    fi
+
+    local checksum_line
+    checksum_line=$(awk -v target="$filename" '$1 ~ /^[0-9a-fA-F]{64}$/ {name=$2; sub(/^\*/, "", name); if (name == target) {print; found=1; exit}} END {exit found ? 0 : 1}' "$checksum_file" || true)
+    if [ -z "$checksum_line" ]; then
+        print_error "No checksum found for $filename"
+        exit 1
+    fi
+
+    printf '%s\n' "$checksum_line" | sha256sum -c -
+}
+
 # Function to download and install motd
 install_motd() {
     local version="$1"
     local platform="$2"
     local filename="motd-${version}-${platform}.tar.gz"
     local artifact
+    local temp_dir
+    local previous_dir
     artifact=$(download_artifact_name "$platform")
     if [ -z "$artifact" ]; then
         print_error "Unsupported release artifact for platform: $platform"
@@ -125,23 +154,20 @@ install_motd() {
     fi
 
     local download_url="https://github.com/thewildhive/go-motd/releases/download/v${version}/${filename}"
-    local temp_dir=$(mktemp -d)
+    local checksums_url="https://github.com/thewildhive/go-motd/releases/download/v${version}/archive-checksums.txt"
+    temp_dir=$(mktemp -d)
+    trap 'rm -rf "$temp_dir"' EXIT
     
     print_info "Downloading motd v${version} for ${platform}..."
     
-    # Download the release
-    if command -v curl >/dev/null 2>&1; then
-        curl -L -o "${temp_dir}/${filename}" "$download_url"
-    elif command -v wget >/dev/null 2>&1; then
-        wget -O "${temp_dir}/${filename}" "$download_url"
-    else
-        print_error "Neither curl nor wget is available"
-        exit 1
-    fi
+    download_file "$download_url" "${temp_dir}/${filename}"
+    download_file "$checksums_url" "${temp_dir}/archive-checksums.txt"
     
     # Extract and install
     print_info "Extracting and installing..."
+    previous_dir=$(pwd)
     cd "$temp_dir"
+    verify_checksum "archive-checksums.txt" "$filename"
     if [[ "$filename" == *.zip ]]; then
         if ! command -v unzip >/dev/null 2>&1; then
             print_error "unzip is required to extract Windows archives"
@@ -169,10 +195,10 @@ install_motd() {
         chmod +x "$INSTALL_DIR/motd"
     fi
     
-    # Cleanup
-    cd /
+    cd "$previous_dir"
     rm -rf "$temp_dir"
-    
+    trap - EXIT
+
     print_success "motd v${version} installed to $INSTALL_DIR/motd"
 }
 

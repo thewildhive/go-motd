@@ -7,14 +7,15 @@ This guide covers installing and configuring `motd`.
 ### Option 1: Download Pre-built Binary (Recommended)
 
 1. Open the [Releases page](https://github.com/thewildhive/go-motd/releases)
-2. Download the correct archive:
+2. Download the correct archive and `archive-checksums.txt`:
    - Linux: `motd-VERSION-linux-amd64.tar.gz` or `motd-VERSION-linux-arm64.tar.gz`
    - macOS: `motd-VERSION-darwin-amd64.tar.gz` or `motd-VERSION-darwin-arm64.tar.gz`
    - Windows: `motd-VERSION-windows-amd64.zip`
-3. Extract and install:
+3. Verify the archive checksum, then extract and install:
 
 ```bash
 # Linux amd64
+sha256sum -c archive-checksums.txt --ignore-missing
 tar -xzf motd-*-linux-amd64.tar.gz
 sudo mv motd-linux-amd64 /usr/local/bin/motd
 sudo chmod +x /usr/local/bin/motd
@@ -22,6 +23,7 @@ sudo chmod +x /usr/local/bin/motd
 
 ```bash
 # macOS Apple Silicon
+shasum -a 256 -c archive-checksums.txt --ignore-missing
 tar -xzf motd-*-darwin-arm64.tar.gz
 sudo mv motd-darwin-arm64 /usr/local/bin/motd
 sudo chmod +x /usr/local/bin/motd
@@ -30,6 +32,7 @@ sudo chmod +x /usr/local/bin/motd
 ```powershell
 # Windows (PowerShell)
 Expand-Archive motd-*-windows-amd64.zip
+Set-Location motd-*-windows-amd64
 New-Item -ItemType Directory -Force "$env:LOCALAPPDATA\Programs\motd" | Out-Null
 Move-Item motd-windows-amd64.exe "$env:LOCALAPPDATA\Programs\motd\motd.exe"
 ```

@@ -144,7 +144,9 @@ motd self-update --force
 Security properties:
 - SHA256 checksum verification
 - HTTPS-only downloads
-- Backup and rollback on update failure
+- Backup and rollback on Unix update failure
+
+The Windows updater schedules replacement after the current process exits and keeps a `.backup` file until that replacement script succeeds.
 
 Release uploads include raw binaries for `self-update`, human-friendly archives for manual installs, and separate checksum files for raw binaries and archives.
 

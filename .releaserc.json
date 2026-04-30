@@ -34,7 +34,20 @@
       {
         "addReleases": "bottom",
         "draft": false,
-        "prerelease": false
+        "prerelease": false,
+        "successComment": false,
+        "failComment": false,
+        "assets": [
+          "release/*.tar.gz",
+          "release/*.zip",
+          "release/motd-linux-amd64",
+          "release/motd-linux-arm64",
+          "release/motd-darwin-amd64",
+          "release/motd-darwin-arm64",
+          "release/motd-windows-amd64.exe",
+          "release/checksums.txt",
+          "release/archive-checksums.txt"
+        ]
       }
     ],
     [

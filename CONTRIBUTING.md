@@ -18,7 +18,7 @@ This project uses [Conventional Commits](https://www.conventionalcommits.org/) t
 
 - `feat`: New feature (creates a **minor** version)
 - `fix`: Bug fix (creates a **patch** version)
-- `docs`: Documentation changes (creates a **patch** version)
+- `docs`: Documentation changes (**no release** by default)
 - `style`: Code style changes (formatting, etc.) (creates a **patch** version)
 - `refactor`: Code refactoring (creates a **patch** version)
 - `perf`: Performance improvements (creates a **minor** version)
@@ -52,7 +52,7 @@ Releases are automatically handled by the GitHub Actions release workflow on pus
 1. Create a feature branch from `main`
 2. Make your changes following the commit convention
 3. Push your branch and create a pull request
-4. Once merged to `main`, a release will be automatically created
+4. Once merged to `main`, release-worthy commits will automatically publish a release
 
 Commit messages should follow the documented types so semantic-release can compute the correct version bump.
 

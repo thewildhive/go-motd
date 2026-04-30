@@ -11,26 +11,55 @@ on:
         required: false
         type: string
 
+permissions:
+  contents: read
+
 concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
-  test:
-    name: Test
+  release:
+    name: Release
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     if: ${{ github.event_name == 'workflow_dispatch' || !contains(github.event.head_commit.message || '', 'chore(release)') }}
+    permissions:
+      contents: write
+    env:
+      RELEASE_TAG: ${{ github.event.inputs.tag || '' }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
         with:
           fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Validate requested release tag
+        if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag != '' }}
+        run: |
+          set -euo pipefail
+          if ! [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "Invalid release tag: $RELEASE_TAG"
+            exit 1
+          fi
+          git rev-parse --verify --quiet "refs/tags/${RELEASE_TAG}^{commit}" >/dev/null
+          git checkout --detach "$RELEASE_TAG"
 
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
           cache: true
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: npm
+
+      - name: Install Node.js dependencies
+        run: npm ci
 
       - name: Verify formatting
         run: |
@@ -50,50 +79,80 @@ jobs:
           go build -buildvcs=false -o /tmp/motd-test .
           /tmp/motd-test -h
 
-  release:
-    name: Semantic Release
-    needs: test
-    runs-on: ubuntu-latest
-    if: ${{ github.event_name == 'workflow_dispatch' || !contains(github.event.head_commit.message || '', 'chore(release)') }}
-    permissions:
-      contents: write
-      issues: write
-      pull-requests: write
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Set up Go
-        uses: actions/setup-go@v6
-        with:
-          go-version-file: go.mod
-          cache: true
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: "24"
-          cache: npm
-
-      - name: Install Node.js dependencies
-        run: npm ci
-
-      - name: Capture latest tag before release
-        id: pre_tag
+      - name: Preview semantic release
+        id: preview
         if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.tag == '' }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -euo pipefail
-          TAG=""
-          if TAG_CANDIDATE=$(git describe --tags --abbrev=0 2>/dev/null); then
-            TAG="$TAG_CANDIDATE"
+          set +e
+          OUTPUT="$(npx semantic-release --dry-run 2>&1)"
+          STATUS=$?
+          set -e
+          printf '%s\n' "$OUTPUT"
+          if [ "$STATUS" -ne 0 ]; then
+            exit "$STATUS"
           fi
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+          VERSION=""
+          if [[ "$OUTPUT" =~ The\ next\ release\ version\ is\ ([0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?) ]]; then
+            VERSION="${BASH_REMATCH[1]}"
+          fi
+
+          if [ -z "$VERSION" ]; then
+            echo "released=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "released=true" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve manual release metadata
+        id: manual_release
+        if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag != '' }}
+        run: |
+          set -euo pipefail
+          VERSION="${RELEASE_TAG#v}"
+          echo "released=true" >> "$GITHUB_OUTPUT"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Build release binaries
+        if: steps.preview.outputs.released == 'true' || steps.manual_release.outputs.released == 'true'
+        env:
+          RELEASE_VERSION: ${{ steps.preview.outputs.version || steps.manual_release.outputs.version }}
+        run: |
+          set -euo pipefail
+          mkdir -p release
+
+          GOOS=linux GOARCH=amd64 go build -buildvcs=false -ldflags="-s -w -X main.VERSION=${RELEASE_VERSION}" -o release/motd-linux-amd64 .
+          GOOS=linux GOARCH=arm64 go build -buildvcs=false -ldflags="-s -w -X main.VERSION=${RELEASE_VERSION}" -o release/motd-linux-arm64 .
+          GOOS=darwin GOARCH=amd64 go build -buildvcs=false -ldflags="-s -w -X main.VERSION=${RELEASE_VERSION}" -o release/motd-darwin-amd64 .
+          GOOS=darwin GOARCH=arm64 go build -buildvcs=false -ldflags="-s -w -X main.VERSION=${RELEASE_VERSION}" -o release/motd-darwin-arm64 .
+          GOOS=windows GOARCH=amd64 go build -buildvcs=false -ldflags="-s -w -X main.VERSION=${RELEASE_VERSION}" -o release/motd-windows-amd64.exe .
+
+          cd release
+          sha256sum motd-linux-amd64 motd-linux-arm64 motd-darwin-amd64 motd-darwin-arm64 motd-windows-amd64.exe > checksums.txt
+
+      - name: Package release artifacts
+        if: steps.preview.outputs.released == 'true' || steps.manual_release.outputs.released == 'true'
+        env:
+          RELEASE_VERSION: ${{ steps.preview.outputs.version || steps.manual_release.outputs.version }}
+        run: |
+          set -euo pipefail
+          cd release
+
+          tar -czf "motd-${RELEASE_VERSION}-linux-amd64.tar.gz" motd-linux-amd64
+          tar -czf "motd-${RELEASE_VERSION}-linux-arm64.tar.gz" motd-linux-arm64
+          tar -czf "motd-${RELEASE_VERSION}-darwin-amd64.tar.gz" motd-darwin-amd64
+          tar -czf "motd-${RELEASE_VERSION}-darwin-arm64.tar.gz" motd-darwin-arm64
+          zip "motd-${RELEASE_VERSION}-windows-amd64.zip" motd-windows-amd64.exe
+          sha256sum *.tar.gz *.zip > archive-checksums.txt
 
       - name: Publish with semantic-release
-        if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.tag == '' }}
+        if: ${{ github.event_name != 'workflow_dispatch' && steps.preview.outputs.released == 'true' }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GIT_AUTHOR_NAME: github-actions[bot]
@@ -102,76 +161,11 @@ jobs:
           GIT_COMMITTER_EMAIL: github-actions[bot]@users.noreply.github.com
         run: npx semantic-release
 
-      - name: Resolve release metadata
-        id: release_meta
-        run: |
-          set -euo pipefail
-          INPUT_TAG="${{ github.event.inputs.tag || '' }}"
-          if [ -n "$INPUT_TAG" ]; then
-            VERSION="${INPUT_TAG#v}"
-            echo "released=true" >> "$GITHUB_OUTPUT"
-            echo "tag=$INPUT_TAG" >> "$GITHUB_OUTPUT"
-            echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          PREV_TAG="${{ steps.pre_tag.outputs.tag }}"
-          TAG=""
-          if TAG_CANDIDATE=$(git describe --tags --abbrev=0 2>/dev/null); then
-            TAG="$TAG_CANDIDATE"
-          fi
-
-          if [ -z "$TAG" ] || [ "$TAG" = "$PREV_TAG" ]; then
-            echo "released=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          VERSION="${TAG#v}"
-          echo "released=true" >> "$GITHUB_OUTPUT"
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-
-      - name: Checkout requested release tag
-        if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag != '' }}
-        run: |
-          set -euo pipefail
-          git checkout --detach "${{ steps.release_meta.outputs.tag }}"
-
-      - name: Build release binaries
-        if: steps.release_meta.outputs.released == 'true'
-        run: |
-          set -euo pipefail
-          VERSION="${{ steps.release_meta.outputs.version }}"
-          mkdir -p release
-
-          GOOS=linux GOARCH=amd64 go build -buildvcs=false -ldflags="-s -w -X main.VERSION=${VERSION}" -o release/motd-linux-amd64 .
-          GOOS=linux GOARCH=arm64 go build -buildvcs=false -ldflags="-s -w -X main.VERSION=${VERSION}" -o release/motd-linux-arm64 .
-          GOOS=darwin GOARCH=amd64 go build -buildvcs=false -ldflags="-s -w -X main.VERSION=${VERSION}" -o release/motd-darwin-amd64 .
-          GOOS=darwin GOARCH=arm64 go build -buildvcs=false -ldflags="-s -w -X main.VERSION=${VERSION}" -o release/motd-darwin-arm64 .
-          GOOS=windows GOARCH=amd64 go build -buildvcs=false -ldflags="-s -w -X main.VERSION=${VERSION}" -o release/motd-windows-amd64.exe .
-
-          cd release
-          sha256sum motd-linux-amd64 motd-linux-arm64 motd-darwin-amd64 motd-darwin-arm64 motd-windows-amd64.exe > checksums.txt
-
-      - name: Package release artifacts
-        if: steps.release_meta.outputs.released == 'true'
-        run: |
-          set -euo pipefail
-          VERSION="${{ steps.release_meta.outputs.version }}"
-          cd release
-
-          tar -czf "motd-${VERSION}-linux-amd64.tar.gz" motd-linux-amd64
-          tar -czf "motd-${VERSION}-linux-arm64.tar.gz" motd-linux-arm64
-          tar -czf "motd-${VERSION}-darwin-amd64.tar.gz" motd-darwin-amd64
-          tar -czf "motd-${VERSION}-darwin-arm64.tar.gz" motd-darwin-arm64
-          zip "motd-${VERSION}-windows-amd64.zip" motd-windows-amd64.exe
-          sha256sum *.tar.gz *.zip > archive-checksums.txt
-
-      - name: Upload release assets
-        if: steps.release_meta.outputs.released == 'true'
+      - name: Upload rebuilt release assets
+        if: ${{ github.event_name == 'workflow_dispatch' && steps.manual_release.outputs.released == 'true' }}
         uses: softprops/action-gh-release@v3
         with:
-          tag_name: ${{ steps.release_meta.outputs.tag }}
+          tag_name: ${{ steps.manual_release.outputs.tag }}
           files: |
             release/*.tar.gz
             release/*.zip
