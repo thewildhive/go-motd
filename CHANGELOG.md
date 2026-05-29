@@ -1,3 +1,10 @@
+## [v1.2.2] - 2026-05-29
+
+- fix: prevent shell injection via hostname in printHeader (closes #11, #20) (c3750d6)
+- fix: validate media URLs before readiness checks (closes #16) Also delete unused test-default.json (closes #21) and add make check target for gofmt+vet+test (closes #25). (8c2eaf3)
+- fix: system package improvements (closes #15, #17, #18, #19) (362563e)
+- fix: handle cross-device rename, sync copyFile, detect non-interactive mode (2ea9beb)
+
 ## [v1.2.1] - 2026-05-29
 
 - fix: add missing strconv import in system/windows.go (29346ed)
