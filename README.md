@@ -154,6 +154,17 @@ Release uploads include raw binaries for `self-update`, human-friendly archives 
 
 See `INSTALL.md` for complete installation and system integration guidance.
 
+## Release Automation
+
+Releases are generated from conventional commits on `main` using Go-native tooling — [`svu`](https://github.com/caarlos0/svu) for version bumping and a shell-based pipeline for build and publish. No npm/Node.js dependencies are involved.
+
+- `feat` and `perf` trigger minor releases
+- `fix`, `refactor`, and `build` trigger patch releases
+- `docs`, `style`, `test`, `ci`, and `chore` do not trigger releases (they don't affect the compiled binary)
+- `BREAKING CHANGE:` in commit footer triggers a major release
+
+When a release is created, CI builds cross-platform archives and uploads them with `checksums.txt` to the GitHub release for the new `vX.Y.Z` tag.
+
 ## Development Checks
 
 ```bash
