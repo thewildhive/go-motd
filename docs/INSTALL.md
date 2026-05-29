@@ -4,62 +4,61 @@ This guide covers installing and configuring `motd`.
 
 ## Quick Install
 
-The commands below download the latest release for your platform, verify the SHA256 checksum, and install — one block to copy and paste.
+The commands below download the latest release binary for your platform, verify its SHA256 checksum, and install — one block to copy and paste. The raw binaries are listed in `checksums.txt` and are used directly (no archive extraction needed).
 
 ### Linux (amd64)
 ```bash
-curl -sL $(curl -s https://api.github.com/repos/thewildhive/go-motd/releases/latest | grep browser_download_url | grep linux-amd64.tar.gz | cut -d'"' -f4) -o motd.tar.gz &&\
-curl -sL $(curl -s https://api.github.com/repos/thewildhive/go-motd/releases/latest | grep browser_download_url | grep checksums.txt | cut -d'"' -f4) -o checksums.txt &&\
+curl -sL $(curl -s https://api.github.com/repos/thewildhive/go-motd/releases/latest | grep browser_download_url | grep '/motd-linux-amd64"' | cut -d'"' -f4) -o motd-linux-amd64 &&\
+curl -sL $(curl -s https://api.github.com/repos/thewildhive/go-motd/releases/latest | grep browser_download_url | grep '/checksums.txt"' | cut -d'"' -f4) -o checksums.txt &&\
 sha256sum -c checksums.txt --ignore-missing &&\
-tar -xzf motd.tar.gz &&\
 sudo mv motd-linux-amd64 /usr/local/bin/motd &&\
-rm -f motd.tar.gz checksums.txt motd-linux-amd64
+sudo chmod +x /usr/local/bin/motd &&\
+rm -f checksums.txt
 ```
 
 ### Linux (arm64)
 ```bash
-curl -sL $(curl -s https://api.github.com/repos/thewildhive/go-motd/releases/latest | grep browser_download_url | grep linux-arm64.tar.gz | cut -d'"' -f4) -o motd.tar.gz &&\
-curl -sL $(curl -s https://api.github.com/repos/thewildhive/go-motd/releases/latest | grep browser_download_url | grep checksums.txt | cut -d'"' -f4) -o checksums.txt &&\
+curl -sL $(curl -s https://api.github.com/repos/thewildhive/go-motd/releases/latest | grep browser_download_url | grep '/motd-linux-arm64"' | cut -d'"' -f4) -o motd-linux-arm64 &&\
+curl -sL $(curl -s https://api.github.com/repos/thewildhive/go-motd/releases/latest | grep browser_download_url | grep '/checksums.txt"' | cut -d'"' -f4) -o checksums.txt &&\
 sha256sum -c checksums.txt --ignore-missing &&\
-tar -xzf motd.tar.gz &&\
 sudo mv motd-linux-arm64 /usr/local/bin/motd &&\
-rm -f motd.tar.gz checksums.txt motd-linux-arm64
+sudo chmod +x /usr/local/bin/motd &&\
+rm -f checksums.txt
 ```
 
 ### macOS (Apple Silicon)
 ```bash
-curl -sL $(curl -s https://api.github.com/repos/thewildhive/go-motd/releases/latest | grep browser_download_url | grep darwin-arm64.tar.gz | cut -d'"' -f4) -o motd.tar.gz &&\
-curl -sL $(curl -s https://api.github.com/repos/thewildhive/go-motd/releases/latest | grep browser_download_url | grep checksums.txt | cut -d'"' -f4) -o checksums.txt &&\
+curl -sL $(curl -s https://api.github.com/repos/thewildhive/go-motd/releases/latest | grep browser_download_url | grep '/motd-darwin-arm64"' | cut -d'"' -f4) -o motd-darwin-arm64 &&\
+curl -sL $(curl -s https://api.github.com/repos/thewildhive/go-motd/releases/latest | grep browser_download_url | grep '/checksums.txt"' | cut -d'"' -f4) -o checksums.txt &&\
 shasum -a 256 -c checksums.txt --ignore-missing &&\
-tar -xzf motd.tar.gz &&\
 sudo mv motd-darwin-arm64 /usr/local/bin/motd &&\
-rm -f motd.tar.gz checksums.txt motd-darwin-arm64
+sudo chmod +x /usr/local/bin/motd &&\
+rm -f checksums.txt
 ```
 
 ### macOS (Intel)
 ```bash
-curl -sL $(curl -s https://api.github.com/repos/thewildhive/go-motd/releases/latest | grep browser_download_url | grep darwin-amd64.tar.gz | cut -d'"' -f4) -o motd.tar.gz &&\
-curl -sL $(curl -s https://api.github.com/repos/thewildhive/go-motd/releases/latest | grep browser_download_url | grep checksums.txt | cut -d'"' -f4) -o checksums.txt &&\
+curl -sL $(curl -s https://api.github.com/repos/thewildhive/go-motd/releases/latest | grep browser_download_url | grep '/motd-darwin-amd64"' | cut -d'"' -f4) -o motd-darwin-amd64 &&\
+curl -sL $(curl -s https://api.github.com/repos/thewildhive/go-motd/releases/latest | grep browser_download_url | grep '/checksums.txt"' | cut -d'"' -f4) -o checksums.txt &&\
 shasum -a 256 -c checksums.txt --ignore-missing &&\
-tar -xzf motd.tar.gz &&\
 sudo mv motd-darwin-amd64 /usr/local/bin/motd &&\
-rm -f motd.tar.gz checksums.txt motd-darwin-amd64
+sudo chmod +x /usr/local/bin/motd &&\
+rm -f checksums.txt
 ```
 
 ### Windows (PowerShell)
 ```powershell
 $tag = (Invoke-RestMethod https://api.github.com/repos/thewildhive/go-motd/releases/latest).tag_name
-$asset = "motd-${tag}-windows-amd64.zip"
-$url = "https://github.com/thewildhive/go-motd/releases/download/${tag}/${asset}"
-$csUrl = "https://github.com/thewildhive/go-motd/releases/download/${tag}/archive-checksums.txt"
-Invoke-WebRequest $url -OutFile motd.zip
-Invoke-WebRequest $csUrl -OutFile archive-checksums.txt
-$expected = (Get-Content archive-checksums.txt | Where-Object { $_ -match $asset } | ForEach-Object { ($_ -split '\s+')[0] })
-$actual = (Get-FileHash motd.zip -Algorithm SHA256).Hash.ToLower()
+$url = "https://github.com/thewildhive/go-motd/releases/download/${tag}/motd-windows-amd64.exe"
+$csUrl = "https://github.com/thewildhive/go-motd/releases/download/${tag}/checksums.txt"
+Invoke-WebRequest $url -OutFile motd-windows-amd64.exe
+Invoke-WebRequest $csUrl -OutFile checksums.txt
+$expected = (Get-Content checksums.txt | Where-Object { $_ -match 'motd-windows-amd64' } | ForEach-Object { ($_ -split '\s+')[0] })
+$actual = (Get-FileHash motd-windows-amd64.exe -Algorithm SHA256).Hash.ToLower()
 if ($expected -ne $actual) { throw "Checksum mismatch" }
-Expand-Archive motd.zip -DestinationPath "$env:LOCALAPPDATA\Programs\motd" -Force
-Move-Item "$env:LOCALAPPDATA\Programs\motd\motd-windows-amd64.exe" "$env:LOCALAPPDATA\Programs\motd\motd.exe" -Force
-Remove-Item motd.zip, archive-checksums.txt
+New-Item -ItemType Directory -Force "$env:LOCALAPPDATA\Programs\motd" | Out-Null
+Move-Item motd-windows-amd64.exe "$env:LOCALAPPDATA\Programs\motd\motd.exe" -Force
+Remove-Item checksums.txt
 ```
 
 ### Build from Source
