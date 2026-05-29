@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"motd/config"
 )
 
 func TestParseLegacyYAMLConfig(t *testing.T) {
@@ -63,7 +65,7 @@ system:
 	if err != nil {
 		t.Fatalf("failed to encode migrated config: %v", err)
 	}
-	if _, err := decodeJSONConfig(encoded); err != nil {
+	if _, err := config.DecodeJSONConfig(encoded); err != nil {
 		t.Fatalf("migrated config should decode as JSON config: %v", err)
 	}
 }
@@ -112,7 +114,7 @@ system:
 	if err != nil {
 		t.Fatalf("failed to read migrated config: %v", err)
 	}
-	parsed, err := decodeJSONConfig(data)
+	parsed, err := config.DecodeJSONConfig(data)
 	if err != nil {
 		t.Fatalf("migrated JSON should decode: %v", err)
 	}

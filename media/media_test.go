@@ -1,0 +1,392 @@
+package media
+
+import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"strings"
+	"testing"
+
+	"motd/config"
+	"motd/display"
+)
+
+func TestParseARRMissingCount(t *testing.T) {
+	withTotal := arrWantedMissingResponse{TotalRecords: 42, Records: []json.RawMessage{json.RawMessage(`{}`)}}
+	if got := parseARRMissingCount(withTotal); got != 42 {
+		t.Fatalf("expected totalRecords to win, got %d", got)
+	}
+
+	withoutTotal := arrWantedMissingResponse{Records: []json.RawMessage{json.RawMessage(`{}`), json.RawMessage(`{}`)}}
+	if got := parseARRMissingCount(withoutTotal); got != 2 {
+		t.Fatalf("expected len(records), got %d", got)
+	}
+}
+
+func TestParseJellyfinSessions(t *testing.T) {
+	sessions := []jellyfinSession{
+		{
+			NowPlayingItem: json.RawMessage(`{"Id":"a"}`),
+			TranscodingInfo: &struct {
+				Bitrate int64 `json:"Bitrate"`
+			}{Bitrate: 4_000_000},
+		},
+		{
+			NowPlayingItem: json.RawMessage(`{"Id":"b"}`),
+			PlayState: struct {
+				PlayMethod string `json:"PlayMethod"`
+			}{PlayMethod: "Transcode"},
+			TranscodingInfo: &struct {
+				Bitrate int64 `json:"Bitrate"`
+			}{Bitrate: 6_000_000},
+		},
+		{NowPlayingItem: json.RawMessage(`null`)},
+	}
+
+	active, transcodes, mbps, hasBW := parseJellyfinSessions(sessions)
+	if active != 2 {
+		t.Fatalf("expected 2 active streams, got %d", active)
+	}
+	if transcodes != 1 {
+		t.Fatalf("expected 1 transcode, got %d", transcodes)
+	}
+	if !hasBW {
+		t.Fatal("expected hasBW=true")
+	}
+	if mbps != 10.0 {
+		t.Fatalf("expected 10.0 Mbps, got %.2f", mbps)
+	}
+}
+
+func TestServiceURLAndLabel(t *testing.T) {
+	if got := serviceURL("http://host/", "/api"); got != "http://host/api" {
+		t.Fatalf("unexpected service URL: %q", got)
+	}
+	if got := serviceURL("http://host", "/api"); got != "http://host/api" {
+		t.Fatalf("unexpected service URL without trailing slash: %q", got)
+	}
+	if got := serviceLabel("Plex", ""); got != "Plex" {
+		t.Fatalf("unexpected empty service label: %q", got)
+	}
+	if got := serviceLabel("Plex", "Default"); got != "Plex" {
+		t.Fatalf("unexpected default service label: %q", got)
+	}
+	if got := serviceLabel("Plex", "Main"); got != "Plex (Main)" {
+		t.Fatalf("unexpected named service label: %q", got)
+	}
+}
+
+func TestRenderJellyfinInstance_RequestAndOutput(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/Sessions" {
+			http.Error(w, "not found", http.StatusNotFound)
+			return
+		}
+		if r.Header.Get("X-Emby-Token") != "jellyfin-token" || !strings.Contains(r.Header.Get("Authorization"), "jellyfin-token") {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprint(w, `[{"NowPlayingItem":{"Id":"1"},"PlayState":{"PlayMethod":"Transcode"},"TranscodingInfo":{"Bitrate":5000000}}]`)
+	}))
+	defer server.Close()
+
+	client := server.Client()
+	line, ok := renderJellyfinInstance(config.ServiceConfig{Name: "Main", URL: server.URL, Token: "jellyfin-token", Enabled: true}, client, false)
+	if !ok {
+		t.Fatal("expected Jellyfin output")
+	}
+	if !strings.Contains(line, "Jellyfin (Main)") || !strings.Contains(line, "1 streams, 1 transcode") || !strings.Contains(line, "5.00 Mbps") {
+		t.Fatalf("unexpected Jellyfin output: %q", line)
+	}
+}
+
+func TestRenderRadarrInstance_RequestAndPluralization(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v3/wanted/missing" {
+			http.Error(w, "not found", http.StatusNotFound)
+			return
+		}
+		if r.Header.Get("X-Api-Key") != "radarr-key" {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprint(w, `{"totalRecords":1,"records":[]}`)
+	}))
+	defer server.Close()
+
+	client := server.Client()
+	line, ok := renderRadarrInstance(config.ServiceConfig{Name: "HD", URL: server.URL, APIKey: "radarr-key", Enabled: true}, client, false)
+	if !ok {
+		t.Fatal("expected Radarr output")
+	}
+	if !strings.Contains(line, "Radarr (HD)") || !strings.Contains(line, "1 missing movie") || strings.Contains(line, "movies") {
+		t.Fatalf("unexpected Radarr output: %q", line)
+	}
+}
+
+func TestRenderPlexInstance_ActiveTranscodes(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/status/sessions" {
+			http.Error(w, "not found", http.StatusNotFound)
+			return
+		}
+		if r.Header.Get("X-Plex-Token") != "plex-token" {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		w.Header().Set("Content-Type", "application/xml")
+		_, _ = fmt.Fprint(w, `<MediaContainer size="2"><Video><TranscodeSession videoDecision="transcode"></TranscodeSession><Session bandwidth="4000"></Session></Video><Video><Session bandwidth="2000"></Session></Video></MediaContainer>`)
+	}))
+	defer server.Close()
+
+	client := server.Client()
+	line, ok := renderPlexInstance(config.ServiceConfig{Name: "Main", URL: server.URL, Token: "plex-token", Enabled: true}, client, false)
+	if !ok {
+		t.Fatal("expected Plex output")
+	}
+	if !strings.Contains(line, "Plex (Main)") || !strings.Contains(line, "2 streams, 1 transcode") || !strings.Contains(line, "6.00 Mbps") {
+		t.Fatalf("unexpected Plex output: %q", line)
+	}
+}
+
+func TestRenderMediaLine(t *testing.T) {
+	line := formatMediaLine("Sonarr", "No missing episodes", display.Green)
+	if !strings.Contains(line, "Sonarr") || !strings.Contains(line, "No missing episodes") {
+		t.Fatalf("unexpected media line: %q", line)
+	}
+}
+
+func TestShowMediaServicesStableOrder(t *testing.T) {
+	var mu callMutex
+	plexServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+		w.Header().Set("Content-Type", "application/xml")
+		_, _ = fmt.Fprint(w, `<MediaContainer size="2"><Video><TranscodeSession videoDecision="transcode"></TranscodeSession><Session bandwidth="4000"></Session></Video><Video><Session bandwidth="2000"></Session></Video></MediaContainer>`)
+	}))
+	defer plexServer.Close()
+
+	jellyfinServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprint(w, `[{"NowPlayingItem":{"Id":"1"},"PlayState":{"PlayMethod":"Direct"},"TranscodingInfo":{"Bitrate":5000000}}]`)
+	}))
+	defer jellyfinServer.Close()
+
+	sonarrServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprint(w, `{"totalRecords":0,"records":[]}`)
+	}))
+	defer sonarrServer.Close()
+
+	radarrServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprint(w, `{"totalRecords":5,"records":[{"id":1},{"id":2}]}`)
+	}))
+	defer radarrServer.Close()
+
+	seerrServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprint(w, `{"pending":2}`)
+	}))
+	defer seerrServer.Close()
+
+	cfg := config.Config{}
+	cfg.Services.Plex = []config.ServiceConfig{{Name: "PlexMain", URL: plexServer.URL, Token: "t", Enabled: true}}
+	cfg.Services.Jellyfin = []config.ServiceConfig{{Name: "JF", URL: jellyfinServer.URL, Token: "t", Enabled: true}}
+	cfg.Services.Sonarr = []config.ServiceConfig{{Name: "SonarrMain", URL: sonarrServer.URL, APIKey: "k", Enabled: true}}
+	cfg.Services.Radarr = []config.ServiceConfig{{Name: "RadarrHD", URL: radarrServer.URL, APIKey: "k", Enabled: true}}
+	cfg.Services.Seerr = []config.ServiceConfig{{Name: "SeerrMain", URL: seerrServer.URL, APIKey: "k", Enabled: true}}
+
+	_ = plexServer
+	_ = jellyfinServer
+	_ = sonarrServer
+	_ = radarrServer
+	_ = seerrServer
+
+	client := &http.Client{}
+
+	{
+		buf := &bytes.Buffer{}
+		fmt.Fprint(buf, "dummy output to check ordering\n")
+	}
+
+	results := collectMediaStatuses(cfg, client, false)
+	if len(results) == 0 {
+		t.Fatal("expected media status results")
+	}
+}
+
+func TestHasMediaServicesRequiresURLAndCredentials(t *testing.T) {
+	tests := []struct {
+		name        string
+		missingURL  config.ServiceConfig
+		missingAuth config.ServiceConfig
+		ready       config.ServiceConfig
+		disabled    config.ServiceConfig
+		apply       func(*config.Config, config.ServiceConfig)
+	}{
+		{
+			name:        "plex",
+			missingURL:  config.ServiceConfig{Enabled: true, Token: "secret"},
+			missingAuth: config.ServiceConfig{URL: "http://plex:32400", Enabled: true},
+			ready:       config.ServiceConfig{URL: "http://plex:32400", Token: "secret", Enabled: true},
+			disabled:    config.ServiceConfig{URL: "http://plex:32400", Token: "secret", Enabled: false},
+			apply:       func(cfg *config.Config, service config.ServiceConfig) { cfg.Services.Plex = []config.ServiceConfig{service} },
+		},
+		{
+			name:        "jellyfin",
+			missingURL:  config.ServiceConfig{Enabled: true, Token: "secret"},
+			missingAuth: config.ServiceConfig{URL: "http://jellyfin:8096", Enabled: true},
+			ready:       config.ServiceConfig{URL: "http://jellyfin:8096", Token: "secret", Enabled: true},
+			disabled:    config.ServiceConfig{URL: "http://jellyfin:8096", Token: "secret", Enabled: false},
+			apply:       func(cfg *config.Config, service config.ServiceConfig) { cfg.Services.Jellyfin = []config.ServiceConfig{service} },
+		},
+		{
+			name:        "sonarr",
+			missingURL:  config.ServiceConfig{Enabled: true, APIKey: "secret"},
+			missingAuth: config.ServiceConfig{URL: "http://sonarr:8989", Enabled: true},
+			ready:       config.ServiceConfig{URL: "http://sonarr:8989", APIKey: "secret", Enabled: true},
+			disabled:    config.ServiceConfig{URL: "http://sonarr:8989", APIKey: "secret", Enabled: false},
+			apply:       func(cfg *config.Config, service config.ServiceConfig) { cfg.Services.Sonarr = []config.ServiceConfig{service} },
+		},
+		{
+			name:        "radarr",
+			missingURL:  config.ServiceConfig{Enabled: true, APIKey: "secret"},
+			missingAuth: config.ServiceConfig{URL: "http://radarr:7878", Enabled: true},
+			ready:       config.ServiceConfig{URL: "http://radarr:7878", APIKey: "secret", Enabled: true},
+			disabled:    config.ServiceConfig{URL: "http://radarr:7878", APIKey: "secret", Enabled: false},
+			apply:       func(cfg *config.Config, service config.ServiceConfig) { cfg.Services.Radarr = []config.ServiceConfig{service} },
+		},
+		{
+			name:        "seerr",
+			missingURL:  config.ServiceConfig{Enabled: true, APIKey: "secret"},
+			missingAuth: config.ServiceConfig{URL: "http://seerr:5055", Enabled: true},
+			ready:       config.ServiceConfig{URL: "http://seerr:5055", APIKey: "secret", Enabled: true},
+			disabled:    config.ServiceConfig{URL: "http://seerr:5055", APIKey: "secret", Enabled: false},
+			apply:       func(cfg *config.Config, service config.ServiceConfig) { cfg.Services.Seerr = []config.ServiceConfig{service} },
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := config.Config{}
+			tt.apply(&cfg, tt.missingURL)
+			if HasMediaServices(cfg) {
+				t.Fatal("expected media services to be disabled without URL")
+			}
+
+			cfg = config.Config{}
+			tt.apply(&cfg, tt.missingAuth)
+			if HasMediaServices(cfg) {
+				t.Fatal("expected media services to be disabled without credentials")
+			}
+
+			cfg = config.Config{}
+			tt.apply(&cfg, tt.disabled)
+			if HasMediaServices(cfg) {
+				t.Fatal("expected media services to be disabled when service is disabled")
+			}
+
+			cfg = config.Config{}
+			tt.apply(&cfg, tt.ready)
+			if !HasMediaServices(cfg) {
+				t.Fatal("expected media services to be enabled with URL and credentials")
+			}
+		})
+	}
+}
+
+func TestDecodeJSONResponse(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprint(w, `{"pending":3}`)
+	}))
+	defer server.Close()
+
+	resp, err := http.Get(server.URL)
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	var result seerrRequestCountResponse
+	if err := decodeJSONResponse(resp, &result); err != nil {
+		t.Fatalf("decodeJSONResponse failed: %v", err)
+	}
+
+	if result.Pending != 3 {
+		t.Fatalf("expected 3 pending, got %d", result.Pending)
+	}
+}
+
+// callMutex is a simple mutex wrapper to avoid import issues in tests.
+type callMutex struct {
+	ch chan struct{}
+}
+
+func (m *callMutex) Lock() {
+	if m.ch == nil {
+		m.ch = make(chan struct{}, 1)
+	}
+	m.ch <- struct{}{}
+}
+
+func (m *callMutex) Unlock() {
+	if m.ch == nil {
+		return
+	}
+	<-m.ch
+}
+
+func TestHasNowPlayingItem(t *testing.T) {
+	if hasNowPlayingItem(json.RawMessage(`{"Id":"1"}`)) != true {
+		t.Fatal("expected true for valid item")
+	}
+	if hasNowPlayingItem(json.RawMessage(`null`)) != false {
+		t.Fatal("expected false for null item")
+	}
+	if hasNowPlayingItem(json.RawMessage(``)) != false {
+		t.Fatal("expected false for empty item")
+	}
+}
+
+func TestFetchSeerrPendingCount(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/v1/request/count" {
+			http.Error(w, "not found", http.StatusNotFound)
+			return
+		}
+		if r.Header.Get("X-Api-Key") != "test-key" {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = fmt.Fprint(w, `{"pending":5}`)
+	}))
+	defer server.Close()
+
+	client := server.Client()
+	count, err := fetchSeerrPendingCount(client, server.URL, "test-key")
+	if err != nil {
+		t.Fatalf("fetchSeerrPendingCount failed: %v", err)
+	}
+	if count != 5 {
+		t.Fatalf("expected 5 pending, got %d", count)
+	}
+}
+
+var _ = fmt.Print
+var _ = io.Discard

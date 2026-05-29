@@ -1,4 +1,4 @@
-package main
+package display
 
 import (
 	"fmt"
@@ -7,34 +7,34 @@ import (
 	"strings"
 )
 
-const DOT_LABEL_WIDTH = 22
+const DotLabelWidth = 22
 
 const (
-	RED    = "\033[0;31m"
-	GREEN  = "\033[0;32m"
-	YELLOW = "\033[0;33m"
-	BLUE   = "\033[0;34m"
-	CYAN   = "\033[0;36m"
-	BOLD   = "\033[1m"
-	RESET  = "\033[0m"
+	Red    = "\033[0;31m"
+	Green  = "\033[0;32m"
+	Yellow = "\033[0;33m"
+	Blue   = "\033[0;34m"
+	Cyan   = "\033[0;36m"
+	Bold   = "\033[1m"
+	Reset  = "\033[0m"
 )
 
-func debugLog(msg string, args ...interface{}) {
-	if debugMode {
+func DebugLog(debug bool, msg string, args ...interface{}) {
+	if debug {
 		fmt.Fprintf(os.Stderr, "[DEBUG] "+msg+"\n", args...)
 	}
 }
 
-func dotLabel(label string) {
+func DotLabel(label string) {
 	fmt.Print(label)
-	dots := DOT_LABEL_WIDTH - len(label)
+	dots := DotLabelWidth - len(label)
 	if dots > 0 {
 		fmt.Print(strings.Repeat(".", dots))
 	}
 	fmt.Print(": ")
 }
 
-func printHeader() {
+func PrintHeader() {
 	fmt.Println()
 
 	hostname, _ := os.Hostname()
@@ -65,15 +65,15 @@ func printHeader() {
 		bottomBorder := "╚" + strings.Repeat("═", borderWidth) + "╝"
 		paddedContent := fmt.Sprintf("%-*s", totalWidth-5, label+hostname)
 
-		fmt.Printf("%s%s%s%s\n", BOLD, CYAN, topBorder, RESET)
-		fmt.Printf("%s%s║  %s ║%s\n", BOLD, CYAN, paddedContent, RESET)
-		fmt.Printf("%s%s%s%s\n", BOLD, CYAN, bottomBorder, RESET)
+		fmt.Printf("%s%s%s%s\n", Bold, Cyan, topBorder, Reset)
+		fmt.Printf("%s%s║  %s ║%s\n", Bold, Cyan, paddedContent, Reset)
+		fmt.Printf("%s%s%s%s\n", Bold, Cyan, bottomBorder, Reset)
 	}
 	fmt.Println()
 }
 
-func printSection(title string) {
-	fmt.Printf("\n%s%s━━━ %s ━━━%s\n", BOLD, CYAN, title, RESET)
+func PrintSection(title string) {
+	fmt.Printf("\n%s%s━━━ %s ━━━%s\n", Bold, Cyan, title, Reset)
 }
 
 func hasFiglet() bool {
@@ -82,4 +82,9 @@ func hasFiglet() bool {
 
 func hasLolcat() bool {
 	return hasCommand("lolcat")
+}
+
+func hasCommand(name string) bool {
+	_, err := exec.LookPath(name)
+	return err == nil
 }

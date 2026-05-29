@@ -6,21 +6,22 @@ import (
 	"net/http"
 	"os"
 	"time"
+
+	"motd/config"
+	"motd/display"
+	"motd/media"
+	"motd/system"
+	"motd/update"
 )
 
 var VERSION = "dev"
 
-const CURL_TIMEOUT = 5 * time.Second
-
-var (
-	config     Config
-	httpClient *http.Client
-	debugMode  bool
-)
+const curlTimeout = 5 * time.Second
 
 func main() {
 	if len(os.Args) > 1 && os.Args[1] == "self-update" {
-		handleSelfUpdate()
+		client := &http.Client{Timeout: curlTimeout}
+		update.HandleSelfUpdate(VERSION, client)
 		return
 	}
 
@@ -50,9 +51,8 @@ func main() {
 		return
 	}
 
-	debugMode = *debug
-	httpClient = &http.Client{
-		Timeout: CURL_TIMEOUT,
+	client := &http.Client{
+		Timeout: curlTimeout,
 		Transport: &http.Transport{
 			MaxIdleConns:       10,
 			IdleConnTimeout:    30 * time.Second,
@@ -60,28 +60,51 @@ func main() {
 		},
 	}
 
-	loadConfig(*configPath, *noConfig)
+	cfg, err := config.Load(*configPath, *noConfig, func(msg string, args ...interface{}) {
+		display.DebugLog(*debug, msg, args...)
+	})
+	if err != nil {
+		if legacyErr, ok := err.(*config.LegacyConfigError); ok {
+			config.PrintLegacyConfigError(legacyErr)
+			os.Exit(1)
+		}
+		fmt.Printf("%sError loading configuration: %v%s\n", display.Red, err, display.Reset)
+		os.Exit(1)
+	}
 
-	printHeader()
-	printSection("System Information")
+	if *noConfig {
+		display.DebugLog(*debug, "Using system-only defaults")
+	} else {
+		display.DebugLog(*debug, "Runtime configuration ready")
+	}
 
-	showOS()
-	showUptime()
-	showLoad()
-	showMemory()
-	showBandwidth()
+	display.PrintHeader()
+	display.PrintSection("System Information")
 
-	printSection("Services & Resources")
+	sysCfg := system.ConfigAccessorFrom(cfg)
+	showPlatformSystemInfo(sysCfg, *debug)
 
-	showUser()
-	showProcesses()
-	showDocker()
-	showDisk()
-	showTemp()
+	display.PrintSection("Services & Resources")
 
-	showMediaServices()
+	system.ShowDocker(*debug)
+	system.ShowProcesses(sysCfg, *debug)
+	system.ShowUser(sysCfg, *debug)
+	system.ShowDisk(sysCfg, *debug)
+	system.ShowTemp(sysCfg, *debug)
+
+	if media.HasMediaServices(cfg) {
+		media.ShowMediaServices(cfg, client, *debug)
+	}
 
 	fmt.Println()
+}
+
+func showPlatformSystemInfo(cfg system.ConfigAccessor, debug bool) {
+	system.ShowOS(cfg, debug)
+	system.ShowUptime(cfg, debug)
+	system.ShowLoad(cfg, debug)
+	system.ShowMemory(cfg, debug)
+	system.ShowBandwidth(cfg, debug)
 }
 
 func usage() {

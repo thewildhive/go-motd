@@ -1,4 +1,4 @@
-package main
+package util
 
 import (
 	"io"
@@ -6,7 +6,7 @@ import (
 	"os/exec"
 )
 
-func getUserHome() string {
+func GetUserHome() string {
 	home, err := os.UserHomeDir()
 	if err != nil {
 		return ""
@@ -14,12 +14,12 @@ func getUserHome() string {
 	return home
 }
 
-func hasCommand(cmd string) bool {
-	_, err := exec.LookPath(cmd)
+func HasCommand(name string) bool {
+	_, err := exec.LookPath(name)
 	return err == nil
 }
 
-func copyFile(src, dst string) error {
+func CopyFile(src, dst string) error {
 	sourceFile, err := os.Open(src)
 	if err != nil {
 		return err
@@ -36,7 +36,7 @@ func copyFile(src, dst string) error {
 	return err
 }
 
-func pluralSuffix(count int) string {
+func PluralSuffix(count int) string {
 	if count == 1 {
 		return ""
 	}
