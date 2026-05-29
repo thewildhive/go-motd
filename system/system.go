@@ -8,6 +8,7 @@ import (
 
 	"motd/config"
 	"motd/display"
+	"motd/util"
 )
 
 // Byte size constants for human-readable conversions.
@@ -66,22 +67,15 @@ func FormatDuration(d time.Duration) string {
 	minutes := int(d.Minutes()) % 60
 	parts := make([]string, 0, 3)
 	if days > 0 {
-		parts = append(parts, fmt.Sprintf("%d day%s", days, pluralSuffix(days)))
+		parts = append(parts, fmt.Sprintf("%d day%s", days, util.PluralSuffix(days)))
 	}
 	if hours > 0 {
-		parts = append(parts, fmt.Sprintf("%d hour%s", hours, pluralSuffix(hours)))
+		parts = append(parts, fmt.Sprintf("%d hour%s", hours, util.PluralSuffix(hours)))
 	}
 	if minutes > 0 || len(parts) == 0 {
-		parts = append(parts, fmt.Sprintf("%d minute%s", minutes, pluralSuffix(minutes)))
+		parts = append(parts, fmt.Sprintf("%d minute%s", minutes, util.PluralSuffix(minutes)))
 	}
 	return strings.Join(parts, ", ")
-}
-
-func pluralSuffix(count int) string {
-	if count == 1 {
-		return ""
-	}
-	return "s"
 }
 
 // GetDefaultInterface returns the name of the default network interface

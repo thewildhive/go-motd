@@ -15,6 +15,7 @@ import (
 	"strings"
 	"time"
 
+	"motd/display"
 	"motd/util"
 )
 
@@ -33,28 +34,28 @@ func HandleSelfUpdate(version string, client *http.Client) {
 		force = true
 	}
 
-	fmt.Printf("%sChecking for updates...%s\n", "\033[0;36m", "\033[0m")
+	fmt.Printf("%sChecking for updates...%s\n", display.Cyan, display.Reset)
 
 	release, err := getLatestRelease(client)
 	if err != nil {
-		fmt.Printf("%sError checking for updates: %v%s\n", "\033[0;31m", err, "\033[0m")
+		fmt.Printf("%sError checking for updates: %v%s\n", display.Red, err, display.Reset)
 		os.Exit(1)
 	}
 
 	latestVersion := strings.TrimPrefix(release.TagName, "v")
 	currentVersion := version
 
-	fmt.Printf("Current version: %s%s%s\n", "\033[0;34m", currentVersion, "\033[0m")
-	fmt.Printf("Latest version:  %s%s%s\n", "\033[0;34m", latestVersion, "\033[0m")
+	fmt.Printf("Current version: %s%s%s\n", display.Blue, currentVersion, display.Reset)
+	fmt.Printf("Latest version:  %s%s%s\n", display.Blue, latestVersion, display.Reset)
 
 	if !force && CompareVersions(currentVersion, latestVersion) >= 0 {
-		fmt.Printf("%sAlready running the latest version!%s\n", "\033[0;32m", "\033[0m")
+		fmt.Printf("%sAlready running the latest version!%s\n", display.Green, display.Reset)
 		return
 	}
 
 	if !force {
-		fmt.Printf("\n%sA new version is available!%s\n", "\033[0;33m", "\033[0m")
-		fmt.Printf("Update from %s%s%s to %s%s%s?\n", "\033[0;31m", currentVersion, "\033[0m", "\033[0;32m", latestVersion, "\033[0m")
+		fmt.Printf("\n%sA new version is available!%s\n", display.Yellow, display.Reset)
+		fmt.Printf("Update from %s%s%s to %s%s%s?\n", display.Red, currentVersion, display.Reset, display.Green, latestVersion, display.Reset)
 
 		if !isInteractive() {
 			fmt.Println("Non-interactive mode detected. Use --force to update without prompt.")
@@ -73,28 +74,28 @@ func HandleSelfUpdate(version string, client *http.Client) {
 
 	execPath, err := os.Executable()
 	if err != nil {
-		fmt.Printf("%sError determining executable path: %v%s\n", "\033[0;31m", err, "\033[0m")
+		fmt.Printf("%sError determining executable path: %v%s\n", display.Red, err, display.Reset)
 		os.Exit(1)
 	}
 
 	// Check write access to the binary directory before downloading.
 	if err := checkWriteAccess(execPath); err != nil {
 		localBin := filepath.Join(os.Getenv("HOME"), ".local", "bin")
-		fmt.Printf("%sCannot write to %s%s\n", "\033[0;31m", filepath.Dir(execPath), "\033[0m")
+		fmt.Printf("%sCannot write to %s%s\n", display.Red, filepath.Dir(execPath), display.Reset)
 		fmt.Printf("Try running with sudo, or install to %s and add it to your PATH.\n", localBin)
 		fmt.Printf("  mkdir -p %s\n", localBin)
 		fmt.Printf("  cp %s %s/\n", execPath, localBin)
 		os.Exit(1)
 	}
 
-	fmt.Printf("\n%sUpdating to version %s...%s\n", "\033[0;36m", latestVersion, "\033[0m")
+	fmt.Printf("\n%sUpdating to version %s...%s\n", display.Cyan, latestVersion, display.Reset)
 
 	if err := performUpdate(release, latestVersion, client); err != nil {
-		fmt.Printf("%sUpdate failed: %v%s\n", "\033[0;31m", err, "\033[0m")
+		fmt.Printf("%sUpdate failed: %v%s\n", display.Red, err, display.Reset)
 		os.Exit(1)
 	}
 
-	fmt.Printf("%sSuccessfully updated to version %s!%s\n", "\033[0;32m", latestVersion, "\033[0m")
+	fmt.Printf("%sSuccessfully updated to version %s!%s\n", display.Green, latestVersion, display.Reset)
 }
 
 func getLatestRelease(client *http.Client) (*GitHubRelease, error) {
@@ -360,7 +361,7 @@ del "%s"
 			return fmt.Errorf("failed to start update script: %w", err)
 		}
 
-		fmt.Printf("%sUpdate scheduled. The binary will be replaced when this process exits.%s\n", "\033[0;33m", "\033[0m")
+		fmt.Printf("%sUpdate scheduled. The binary will be replaced when this process exits.%s\n", display.Yellow, display.Reset)
 		return nil
 	}
 

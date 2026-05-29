@@ -36,8 +36,8 @@ func DotLabel(label string) {
 	fmt.Print(": ")
 }
 
-// safeHostnameChars matches hostnames that are safe to pass to external commands.
-// Allows letters, digits, dots, and hyphens — the POSIX-safe hostname subset.
+// safeHostnameRe matches hostnames that are safe to pass to figlet.
+// Allows letters, digits, dots, and hyphens — the POSIX-safe subset.
 var safeHostnameRe = regexp.MustCompile(`^[a-zA-Z0-9.-]+$`)
 
 func PrintHeader() {
@@ -51,12 +51,9 @@ func PrintHeader() {
 	if hasFiglet() && safeHostnameRe.MatchString(hostname) {
 		output, err := exec.Command("figlet", hostname).Output()
 		if err == nil && len(output) > 0 {
-			// Rainbow-color each line of figlet output natively (replaces lolcat)
-			rainbow := []string{"\033[0;31m", "\033[0;33m", "\033[0;32m", "\033[0;36m", "\033[0;34m", "\033[0;35m"}
 			lines := bytes.Split(bytes.TrimRight(output, "\n"), []byte("\n"))
 			for i, line := range lines {
-				color := rainbow[i%len(rainbow)]
-				fmt.Printf("%s%s%s\n", color, string(line), Reset)
+				fmt.Printf("%s%s%s\n", rainbowColors[i%len(rainbowColors)], string(line), Reset)
 			}
 			fmt.Println()
 			return
@@ -88,11 +85,9 @@ func PrintSection(title string) {
 	fmt.Printf("\n%s%s━━━ %s ━━━%s\n", Bold, Cyan, title, Reset)
 }
 
-func hasFiglet() bool {
-	return hasCommand("figlet")
-}
+var rainbowColors = []string{Red, Yellow, Green, Cyan, Blue, "\033[0;35m"}
 
-func hasCommand(name string) bool {
-	_, err := exec.LookPath(name)
+func hasFiglet() bool {
+	_, err := exec.LookPath("figlet")
 	return err == nil
 }

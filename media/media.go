@@ -43,8 +43,7 @@ type arrWantedMissingResponse struct {
 // wantedRecord is a minimal view of a single record from wanted/missing
 // to check availability without decoding the full movie object.
 type wantedRecord struct {
-	Status      string `json:"status"`
-	IsAvailable bool   `json:"isAvailable"`
+	IsAvailable bool `json:"isAvailable"`
 }
 
 type seerrRequestCountResponse struct {

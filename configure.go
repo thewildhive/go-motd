@@ -11,13 +11,6 @@ import (
 	"motd/system"
 )
 
-// credentialFields lists config keys whose values should be masked
-// in prompt defaults to avoid leaking secrets on screen.
-var credentialFields = map[string]bool{
-	"token":   true,
-	"api_key": true,
-	"apikey":  true,
-}
 
 func handleConfigure() {
 	cfgPath := config.GetConfigPaths()[0]

@@ -9,6 +9,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"motd/display"
 )
 
 type ServiceConfig struct {
@@ -207,7 +209,7 @@ func Load(configPath string, noConfig bool, debugFn func(string, ...interface{})
 }
 
 func PrintLegacyConfigError(err *LegacyConfigError) {
-	fmt.Printf("%sError: Legacy YAML config is no longer supported.%s\n", "\033[0;31m", "\033[0m")
+	fmt.Printf("%sError: Legacy YAML config is no longer supported.%s\n", display.Red, display.Reset)
 	fmt.Printf("Found legacy config at: %s\n", err.LegacyPath)
 	if err.RequiredPath != "" {
 		fmt.Printf("Create a JSON config at: %s\n", err.RequiredPath)
