@@ -43,8 +43,10 @@ jobs:
       - name: Run quality checks
         run: |
           set -euo pipefail
-          go test ./...
-          go vet ./...
+          # Run all quality checks in a single go test invocation so the
+          # toolchain's background cache trimmer doesn't cause a spurious
+          # exit code between separate go commands.
+          go test -count=1 -vet=all ./...
           go build -buildvcs=false -o /tmp/motd-test .
           /tmp/motd-test -h
 
