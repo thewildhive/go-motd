@@ -3,6 +3,7 @@ package update
 import (
 	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -53,8 +54,14 @@ func HandleSelfUpdate(version string, client *http.Client) {
 	if !force {
 		fmt.Printf("\n%sA new version is available!%s\n", "\033[0;33m", "\033[0m")
 		fmt.Printf("Update from %s%s%s to %s%s%s?\n", "\033[0;31m", currentVersion, "\033[0m", "\033[0;32m", latestVersion, "\033[0m")
-		fmt.Print("Update? [y/N]: ")
 
+		if !isInteractive() {
+			fmt.Println("Non-interactive mode detected. Use --force to update without prompt.")
+			fmt.Println("Update cancelled.")
+			return
+		}
+
+		fmt.Print("Update? [y/N]: ")
 		var response string
 		fmt.Scanln(&response)
 		if strings.ToLower(response) != "y" && strings.ToLower(response) != "yes" {
@@ -341,9 +348,40 @@ del "%s"
 	}
 
 	if err := os.Rename(tempPath, execPath); err != nil {
+		// If rename fails with a cross-device link error (EXDEV), fall back to
+		// copying the file contents and removing the source.
+		var linkErr *os.LinkError
+		if errors.As(err, &linkErr) {
+			if copyErr := copyFileContents(tempPath, execPath); copyErr != nil {
+				return fmt.Errorf("failed to replace binary (copy fallback): %w", copyErr)
+			}
+			if removeErr := os.Remove(tempPath); removeErr != nil {
+				return fmt.Errorf("binary replaced but temp cleanup failed: %w", removeErr)
+			}
+			return nil
+		}
 		return fmt.Errorf("failed to replace binary: %w", err)
 	}
 
+	return nil
+}
+
+func isInteractive() bool {
+	fi, err := os.Stdin.Stat()
+	if err != nil {
+		return false
+	}
+	return fi.Mode()&os.ModeCharDevice != 0
+}
+
+func copyFileContents(src, dst string) error {
+	data, err := os.ReadFile(src)
+	if err != nil {
+		return fmt.Errorf("failed to read source: %w", err)
+	}
+	if err := os.WriteFile(dst, data, 0755); err != nil {
+		return fmt.Errorf("failed to write destination: %w", err)
+	}
 	return nil
 }
 
