@@ -16,7 +16,7 @@ permissions:
 
 concurrency:
   group: release-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   release:
@@ -205,6 +205,9 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Pull latest main in case another merge happened since checkout
+          git pull --rebase origin main
 
           # Commit the CHANGELOG update
           git add CHANGELOG.md
