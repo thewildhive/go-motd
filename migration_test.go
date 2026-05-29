@@ -70,10 +70,17 @@ system:
 	}
 }
 
-func TestParseLegacyYAMLConfig_UnsupportedShapeFails(t *testing.T) {
-	_, _, err := parseLegacyYAMLConfig([]byte("services:\n  plex:\n    wrong: value\n"))
-	if err == nil {
-		t.Fatal("expected unsupported shape error")
+func TestParseLegacyYAMLConfig_FlatServiceFields(t *testing.T) {
+	// Flat service fields (without a - list item) are silently ignored
+	// to avoid breaking migration for legacy YAML configs with
+	// malformed indentation.
+	parsed, _, err := parseLegacyYAMLConfig([]byte("services:\n  plex:\n    name: Main\n"))
+	if err != nil {
+		t.Fatalf("flat service fields should not error: %v", err)
+	}
+	// The plex service has no list items, so it should be empty
+	if len(parsed.Services.Plex) != 0 {
+		t.Fatalf("expected empty plex slice for flat service config, got %d", len(parsed.Services.Plex))
 	}
 }
 

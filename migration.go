@@ -206,7 +206,7 @@ func processServiceLine(parsedConfig *config.Config, unsupportedServices *[]stri
 		}
 
 		if value == "[]" || value == "{}" {
-			return "", -1, nil
+			return key, -1, nil
 		}
 
 		if !hasValue {
@@ -229,9 +229,11 @@ func processServiceLine(parsedConfig *config.Config, unsupportedServices *[]stri
 			return currentService, currentServiceIndex, nil
 		}
 
-		// Current service field — requires a list item
+		// Current service field — requires a list item.
+		// If there's no current service or list index, silently skip.
+		// This handles malformed YAML where fields appear outside a list.
 		if currentService == "" || currentServiceIndex < 0 {
-			return currentService, currentServiceIndex, fmt.Errorf("service %q has no list item", currentService)
+			return currentService, currentServiceIndex, nil
 		}
 
 		if err := setLegacyServiceField(parsedConfig, currentService, currentServiceIndex, trimmed, line); err != nil {
