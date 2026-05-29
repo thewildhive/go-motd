@@ -43,12 +43,14 @@ jobs:
       - name: Run quality checks
         run: |
           set -euo pipefail
-          # Run all quality checks in a single go test invocation so the
-          # toolchain's background cache trimmer doesn't cause a spurious
-          # exit code between separate go commands.
-          go test -count=1 -vet=all ./...
+          go vet ./...
+          go test -count=1 ./...
           go build -buildvcs=false -o /tmp/motd-test .
           /tmp/motd-test -h
+        # Isolate the Go build cache to avoid spurious cache trim failures
+        # on runner images where the shared cache directory is not writable.
+        env:
+          GOCACHE: /tmp/go-build-cache
 
       - name: Cross-platform compilation check
         run: |
