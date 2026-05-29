@@ -386,7 +386,9 @@ func renderSonarrInstance(sonarr config.ServiceConfig, client *http.Client, debu
 }
 
 func renderRadarrInstance(radarr config.ServiceConfig, client *http.Client, debug bool) (string, bool) {
-	req, err := http.NewRequest("GET", serviceURL(radarr.URL, "/api/v3/wanted/missing"), nil)
+	// excludeUnavailable filters out movies that haven't been released yet,
+	// so only truly available-but-missing movies are counted.
+	req, err := http.NewRequest("GET", serviceURL(radarr.URL, "/api/v3/wanted/missing?excludeUnavailable=true"), nil)
 	if err != nil {
 		display.DebugLog(debug, "Radarr request build failed for %s: %v", radarr.Name, err)
 		return "", false
