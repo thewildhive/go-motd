@@ -1,0 +1,16 @@
+{
+  "services": {
+    "plex": [],
+    "jellyfin": [],
+    "sonarr": [],
+    "radarr": [],
+    "seerr": []
+  },
+  "system": {
+    "compose_dir": "/opt/apps/compose",
+    "tank_mount": "/mnt/tank",
+    "network": {
+      "interface": "eth0"
+    }
+  }
+}
