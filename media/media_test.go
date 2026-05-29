@@ -115,7 +115,8 @@ func TestRenderRadarrInstance_RequestAndPluralization(t *testing.T) {
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = fmt.Fprint(w, `{"totalRecords":1,"records":[]}`)
+		// Include a record with status released so client-side filtering counts it.
+		_, _ = fmt.Fprint(w, `{"totalRecords":1,"records":[{"title":"Test","status":"released","isAvailable":true,"hasFile":false}]}`)
 	}))
 	defer server.Close()
 
@@ -191,7 +192,7 @@ func TestShowMediaServicesStableOrder(t *testing.T) {
 		mu.Lock()
 		defer mu.Unlock()
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = fmt.Fprint(w, `{"totalRecords":5,"records":[{"id":1},{"id":2}]}`)
+		_, _ = fmt.Fprint(w, `{"totalRecords":5,"records":[{"id":1,"status":"released"},{"id":2,"status":"released"}]}`)
 	}))
 	defer radarrServer.Close()
 

@@ -40,6 +40,13 @@ type arrWantedMissingResponse struct {
 	Records      []json.RawMessage `json:"records"`
 }
 
+// wantedRecord is a minimal view of a single record from wanted/missing
+// to check availability without decoding the full movie object.
+type wantedRecord struct {
+	Status      string `json:"status"`
+	IsAvailable bool   `json:"isAvailable"`
+}
+
 type seerrRequestCountResponse struct {
 	Pending int `json:"pending"`
 }
@@ -238,6 +245,25 @@ func parseARRMissingCount(data arrWantedMissingResponse) int {
 	return len(data.Records)
 }
 
+// countAvailableRecords returns only records that are released or available.
+// This provides client-side filtering as a fallback for Radarr versions
+// that don't fully support the excludeUnavailable server-side parameter.
+func countAvailableRecords(records []json.RawMessage) int {
+	count := 0
+	for _, raw := range records {
+		var rec wantedRecord
+		if err := json.Unmarshal(raw, &rec); err != nil {
+			// If we can't parse it, count it to be safe
+			count++
+			continue
+		}
+		if rec.IsAvailable || rec.Status == "released" || rec.Status == "inCinemas" {
+			count++
+		}
+	}
+	return count
+}
+
 func parseJellyfinSessions(sessions []jellyfinSession) (int, int, float64, bool) {
 	active := 0
 	transcodes := 0
@@ -408,7 +434,7 @@ func renderRadarrInstance(radarr config.ServiceConfig, client *http.Client, debu
 		return "", false
 	}
 
-	count := parseARRMissingCount(result)
+	count := countAvailableRecords(result.Records)
 	label := serviceLabel("Radarr", radarr.Name)
 	if count == 0 {
 		return formatMediaLine(label, "No missing movies", display.Green), true
