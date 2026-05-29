@@ -47,3 +47,14 @@ jobs:
           go vet ./...
           go build -buildvcs=false -o /tmp/motd-test .
           /tmp/motd-test -h
+
+      - name: Cross-platform compilation check
+        run: |
+          set -euo pipefail
+          echo "=== Cross-compiling for all targets ==="
+          GOOS=windows GOARCH=amd64 go build ./...
+          echo "  windows/amd64: OK"
+          GOOS=darwin GOARCH=amd64 go build ./...
+          echo "  darwin/amd64:  OK"
+          GOOS=darwin GOARCH=arm64 go build ./...
+          echo "  darwin/arm64:  OK"
