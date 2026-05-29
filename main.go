@@ -19,10 +19,16 @@ var VERSION = "dev"
 const curlTimeout = 5 * time.Second
 
 func main() {
-	if len(os.Args) > 1 && os.Args[1] == "self-update" {
-		client := &http.Client{Timeout: curlTimeout}
-		update.HandleSelfUpdate(VERSION, client)
-		return
+	if len(os.Args) > 1 {
+		switch os.Args[1] {
+		case "self-update":
+			client := &http.Client{Timeout: curlTimeout}
+			update.HandleSelfUpdate(VERSION, client)
+			return
+		case "configure":
+			handleConfigure()
+			return
+		}
 	}
 
 	showHelp := flag.Bool("h", false, "Show help message")

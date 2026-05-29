@@ -85,6 +85,13 @@ func pluralSuffix(count int) string {
 	return "s"
 }
 
+// GetDefaultInterface returns the name of the default network interface
+// (the one with the default route). Returns "" if detection fails.
+// Each platform file provides its own implementation.
+func GetDefaultInterface() string {
+	return getDefaultInterface()
+}
+
 // ShowDFDisk parses df output for a given path and displays it with a label.
 func ShowDFDisk(path, label string) {
 	output, err := exec.Command("df", path).Output()

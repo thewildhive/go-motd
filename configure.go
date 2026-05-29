@@ -1,0 +1,228 @@
+package main
+
+import (
+	"bufio"
+	"fmt"
+	"os"
+	"strings"
+
+	"motd/config"
+	"motd/display"
+	"motd/system"
+)
+
+// credentialFields lists config keys whose values should be masked
+// in prompt defaults to avoid leaking secrets on screen.
+var credentialFields = map[string]bool{
+	"token":   true,
+	"api_key": true,
+	"apikey":  true,
+}
+
+func handleConfigure() {
+	cfgPath := config.GetConfigPaths()[0]
+	reader := bufio.NewReader(os.Stdin)
+
+	// Determine if config exists on disk
+	configExists := false
+	for _, p := range config.GetConfigPaths() {
+		if _, err := os.Stat(p); err == nil {
+			cfgPath = p
+			configExists = true
+			break
+		}
+	}
+
+	// Load existing config or start fresh
+	cfg, err := config.Load("", false, func(string, ...interface{}) {})
+	if err != nil {
+		if _, ok := err.(*config.LegacyConfigError); ok {
+			fmt.Printf("%sLegacy YAML config detected. Run 'motd -migrate' first.%s\n", display.Red, display.Reset)
+			os.Exit(1)
+		}
+		cfg = config.Config{}
+	}
+
+	if configExists {
+		fmt.Printf("Editing existing config at %s%s%s\n", display.Cyan, cfgPath, display.Reset)
+	} else {
+		fmt.Printf("No existing config found. Creating new config at %s%s%s\n", display.Cyan, cfgPath, display.Reset)
+	}
+	fmt.Println()
+
+	// --- System Setup ---
+	fmt.Printf("%s━━━ System Setup ━━━%s\n", display.Bold, display.Reset)
+
+	iface := system.GetDefaultInterface()
+	if iface == "" {
+		iface = "eth0"
+	}
+	cfg.System.Network.Interface = prompt(reader, "Network interface", cfg.System.Network.Interface, iface)
+	cfg.System.TankMount = prompt(reader, "Tank mount path (leave empty to skip)", cfg.System.TankMount, "")
+
+	// --- Service Setup ---
+	fmt.Printf("\n%s━━━ Service Setup ── toggle services on/off ──%s\n", display.Bold, display.Reset)
+
+	configureServiceSlice(reader, &cfg, "Plex", &cfg.Services.Plex, func(svc *config.ServiceConfig) {
+		promptString(reader, svc, "name", "Main")
+		promptString(reader, svc, "url", "http://localhost:32400")
+		promptCredential(reader, svc, "token", "")
+	})
+
+	configureServiceSlice(reader, &cfg, "Jellyfin", &cfg.Services.Jellyfin, func(svc *config.ServiceConfig) {
+		promptString(reader, svc, "name", "Main")
+		promptString(reader, svc, "url", "http://localhost:8096")
+		promptCredential(reader, svc, "token", "")
+	})
+
+	configureServiceSlice(reader, &cfg, "Sonarr", &cfg.Services.Sonarr, func(svc *config.ServiceConfig) {
+		promptString(reader, svc, "name", "HD")
+		promptString(reader, svc, "url", "http://localhost:8989")
+		promptCredential(reader, svc, "api_key", "")
+	})
+
+	configureServiceSlice(reader, &cfg, "Radarr", &cfg.Services.Radarr, func(svc *config.ServiceConfig) {
+		promptString(reader, svc, "name", "HD")
+		promptString(reader, svc, "url", "http://localhost:7878")
+		promptCredential(reader, svc, "api_key", "")
+	})
+
+	configureServiceSlice(reader, &cfg, "Seerr", &cfg.Services.Seerr, func(svc *config.ServiceConfig) {
+		promptString(reader, svc, "name", "Main")
+		promptString(reader, svc, "url", "http://localhost:5055")
+		promptCredential(reader, svc, "api_key", "")
+	})
+
+	// --- Write ---
+	if err := config.Write(cfgPath, cfg); err != nil {
+		fmt.Printf("%sError saving configuration: %v%s\n", display.Red, err, display.Reset)
+		os.Exit(1)
+	}
+
+	fmt.Printf("\n%sConfiguration saved to %s%s\n", display.Green, cfgPath, display.Reset)
+}
+
+// configureServiceSlice adds or modifies a service instance.
+func configureServiceSlice(reader *bufio.Reader, cfg *config.Config, name string, slice *[]config.ServiceConfig, configure func(*config.ServiceConfig)) {
+	if len(*slice) == 0 {
+		if !promptBool(reader, fmt.Sprintf("Setup %s", name), false) {
+			return
+		}
+		*slice = append(*slice, config.ServiceConfig{Enabled: true})
+		configure(&(*slice)[0])
+		return
+	}
+
+	fmt.Printf("\n%s configured:\n", name)
+	for i := range *slice {
+		fmt.Printf("  Instance %d: %s %s\n", i+1, (*slice)[i].Name, (*slice)[i].URL)
+	}
+	if !promptBool(reader, fmt.Sprintf("Update %s", name), true) {
+		return
+	}
+	for i := range *slice {
+		fmt.Printf("  --- Instance %d ---\n", i+1)
+		configure(&(*slice)[i])
+	}
+}
+
+// readLine reads a single line from the reader, trimming whitespace.
+func readLine(reader *bufio.Reader) string {
+	input, err := reader.ReadString('\n')
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(input)
+}
+
+// prompt asks a question and returns the trimmed answer.
+func prompt(reader *bufio.Reader, label, currentVal, fallback string) string {
+	displayVal := currentVal
+	if displayVal == "" {
+		displayVal = fallback
+	}
+
+	fmt.Printf("%s [%s]: ", label, displayVal)
+	input := readLine(reader)
+	if input == "" {
+		return displayVal
+	}
+	return input
+}
+
+// promptBool asks a yes/no question.
+func promptBool(reader *bufio.Reader, label string, defaultVal bool) bool {
+	suffix := "y/N"
+	if defaultVal {
+		suffix = "Y/n"
+	}
+	fmt.Printf("%s [%s]: ", label, suffix)
+	input := readLine(reader)
+	input = strings.ToLower(input)
+	switch input {
+	case "y", "yes":
+		return true
+	case "n", "no":
+		return false
+	default:
+		return defaultVal
+	}
+}
+
+// promptString prompts for a service field.
+func promptString(reader *bufio.Reader, svc *config.ServiceConfig, field, fallback string) {
+	current := fieldValue(svc, field)
+	answer := prompt(reader, "  "+field, current, fallback)
+	setFieldValue(svc, field, answer)
+}
+
+// promptCredential is like promptString but masks the current value.
+func promptCredential(reader *bufio.Reader, svc *config.ServiceConfig, field, fallback string) {
+	current := fieldValue(svc, field)
+	displayVal := current
+	if displayVal != "" {
+		displayVal = "******"
+	}
+
+	fmt.Printf("  %s [%s]: ", field, displayVal)
+	input := readLine(reader)
+
+	if input == "" {
+		if current != "" {
+			return
+		}
+		if fallback != "" {
+			setFieldValue(svc, field, fallback)
+		}
+		return
+	}
+	setFieldValue(svc, field, input)
+}
+
+func fieldValue(svc *config.ServiceConfig, field string) string {
+	switch field {
+	case "name":
+		return svc.Name
+	case "url":
+		return svc.URL
+	case "token":
+		return svc.Token
+	case "api_key":
+		return svc.APIKey
+	default:
+		return ""
+	}
+}
+
+func setFieldValue(svc *config.ServiceConfig, field, value string) {
+	switch field {
+	case "name":
+		svc.Name = value
+	case "url":
+		svc.URL = value
+	case "token":
+		svc.Token = value
+	case "api_key":
+		svc.APIKey = value
+	}
+}

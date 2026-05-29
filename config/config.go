@@ -218,6 +218,27 @@ func PrintLegacyConfigError(err *LegacyConfigError) {
 	}
 }
 
+// Write saves cfg as pretty-printed JSON to path, creating parent
+// directories as needed. Returns an error if marshalling, directory
+// creation, or file writing fails.
+func Write(path string, cfg Config) error {
+	data, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal config: %w", err)
+	}
+	data = append(data, '\n')
+
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		return fmt.Errorf("failed to create config directory: %w", err)
+	}
+
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		return fmt.Errorf("failed to write config: %w", err)
+	}
+
+	return nil
+}
+
 func getUserHome() string {
 	home, err := os.UserHomeDir()
 	if err != nil {
