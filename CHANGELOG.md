@@ -1,3 +1,8 @@
+## [v1.4.5] - 2026-05-29
+
+- fix: download raw binaries instead of archives in install docs (6002967)
+- docs: add single-command install blocks with checksum verification (5668f9a)
+
 ## [v1.4.4] - 2026-05-29
 
 - fix: only count Radarr movies where isAvailable is true (214c330)
