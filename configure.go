@@ -11,7 +11,6 @@ import (
 	"motd/system"
 )
 
-
 func handleConfigure() {
 	cfgPath := config.GetConfigPaths()[0]
 	reader := bufio.NewReader(os.Stdin)
