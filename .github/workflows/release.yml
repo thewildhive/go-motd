@@ -208,7 +208,7 @@ jobs:
           fi
           echo "CHANGELOG.md updated."
 
-      - name: Commit CHANGELOG.md and create tag
+      - name: Commit CHANGELOG.md and push
         if: steps.version.outputs.needed == 'true'
         run: |
           git config user.name "github-actions[bot]"
@@ -218,11 +218,22 @@ jobs:
           git add CHANGELOG.md
           git commit -m "chore(release): ${{ steps.version.outputs.version }}"
 
-          # Tag the release commit
-          git tag -a "${{ steps.version.outputs.tag }}" -m "Release ${{ steps.version.outputs.tag }}"
+          # Push the commit first — if main has advanced since the rebase,
+          # this fails and we bail before creating a stray tag.
+          git push origin main
 
-          # Push both the commit and the tag
-          git push origin main "${{ steps.version.outputs.tag }}"
+      - name: Create and push release tag
+        if: steps.version.outputs.needed == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Create the tag on the release commit
+          git tag -f -a "${{ steps.version.outputs.tag }}" -m "Release ${{ steps.version.outputs.tag }}"
+
+          # Push the tag (delete any stale orphan tag on remote first)
+          git push origin --delete "${{ steps.version.outputs.tag }}" 2>/dev/null || true
+          git push origin "${{ steps.version.outputs.tag }}"
 
       - name: Create GitHub Release
         if: steps.version.outputs.needed == 'true'
