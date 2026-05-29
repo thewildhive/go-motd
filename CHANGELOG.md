@@ -1,3 +1,7 @@
+## [v1.5.0] - 2026-05-29
+
+- feat: add automatic update check to motd output (7f3e0df)
+
 ## [v1.4.5] - 2026-05-29
 
 - fix: download raw binaries instead of archives in install docs (6002967)
