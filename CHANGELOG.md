@@ -1,3 +1,7 @@
+## [v1.2.3] - 2026-05-29
+
+- fix: tolerate flat service fields in legacy YAML migration (c6e1e65)
+
 ## [v1.2.2] - 2026-05-29
 
 - fix: prevent shell injection via hostname in printHeader (closes #11, #20) (c3750d6)
