@@ -198,6 +198,10 @@ func getWindowsDiskInfo() ([]windowsDiskInfo, bool) {
 	return parseWindowsDiskWMIC(output), true
 }
 
+func getDefaultInterface() string {
+	return ""
+}
+
 func ShowTemp(cfg ConfigAccessor, debug bool) {
 	if !hasCommand("powershell") {
 		return
