@@ -1,3 +1,7 @@
+## [v1.4.0] - 2026-05-29
+
+- feat: add delete option to configure wizard for existing services (a7f860e)
+
 ## [v1.3.1] - 2026-05-29
 
 - fix: support variable indentation in legacy YAML migration (bf5a302)
