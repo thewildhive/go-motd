@@ -152,7 +152,7 @@ Release uploads include raw binaries for `self-update`, human-friendly archives 
 
 ## Installation
 
-See `INSTALL.md` for complete installation and system integration guidance.
+See `docs/INSTALL.md` for complete installation and system integration guidance.
 
 ## Release Automation
 
