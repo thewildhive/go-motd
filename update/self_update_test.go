@@ -2,6 +2,7 @@ package update
 
 import (
 	"crypto/sha256"
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -9,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestCompareVersions(t *testing.T) {
@@ -110,5 +112,165 @@ func TestPlatformAssetName(t *testing.T) {
 		if got := platformAssetName(tt.goos, tt.goarch); got != tt.want {
 			t.Fatalf("platformAssetName(%s,%s)=%q want %q", tt.goos, tt.goarch, got, tt.want)
 		}
+	}
+}
+
+func TestCheckWriteAccess_WritableDir(t *testing.T) {
+	tempDir := t.TempDir()
+	execPath := filepath.Join(tempDir, "motd")
+	if err := checkWriteAccess(execPath); err != nil {
+		t.Fatalf("expected write access to temp dir, got: %v", err)
+	}
+}
+
+func TestCacheDir_CreatesDirectory(t *testing.T) {
+	dir, err := cacheDir()
+	if err != nil {
+		t.Fatalf("cacheDir failed: %v", err)
+	}
+	defer os.RemoveAll(filepath.Dir(dir))
+	if _, err := os.Stat(dir); err != nil {
+		t.Fatalf("cache dir does not exist after cacheDir(): %v", err)
+	}
+}
+
+func TestWriteAndReadCachedVersion(t *testing.T) {
+	orig := cachePath
+	t.Cleanup(func() { cachePath = orig })
+
+	cacheDir := t.TempDir()
+	cachePath = func() string { return filepath.Join(cacheDir, "cache") }
+
+	// Write a message
+	writeCachedVersion("update available")
+
+	// Read it back (within cache interval)
+	msg := readCachedVersion()
+	if msg != "update available" {
+		t.Fatalf("expected cached message, got %q", msg)
+	}
+}
+
+func TestCachedVersionExpires(t *testing.T) {
+	orig := cachePath
+	t.Cleanup(func() { cachePath = orig })
+
+	cacheDir := t.TempDir()
+	cachePath = func() string { return filepath.Join(cacheDir, "cache") }
+
+	// Manually write an expired cache entry (25 min old)
+	expired := time.Now().Add(-25 * time.Minute).Unix()
+	data := fmt.Sprintf("%d\n%s\n", expired, "old msg")
+	if err := os.WriteFile(cachePath(), []byte(data), 0644); err != nil {
+		t.Fatalf("failed to write expired cache: %v", err)
+	}
+
+	msg := readCachedVersion()
+	if msg != "" {
+		t.Fatalf("expected expired cache to return empty, got %q", msg)
+	}
+}
+
+func TestFetchLatestVersion(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		resp := GitHubRelease{TagName: "v1.2.3"}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(resp)
+	}))
+	defer server.Close()
+
+	client := server.Client()
+	version, err := fetchLatestVersionFromURL(server.URL, client)
+	if err != nil {
+		t.Fatalf("fetchLatestVersion failed: %v", err)
+	}
+	if version != "1.2.3" {
+		t.Fatalf("expected 1.2.3, got %q", version)
+	}
+}
+
+func TestCheckUpdate_UpToDate(t *testing.T) {
+	orig := cachePath
+	origFetch := fetchLatestVersion
+	t.Cleanup(func() {
+		cachePath = orig
+		fetchLatestVersion = origFetch
+	})
+
+	cacheDir := t.TempDir()
+	cachePath = func() string { return filepath.Join(cacheDir, "cache") }
+	fetchLatestVersion = func(*http.Client) (string, error) { return "1.0.0", nil }
+
+	msg := CheckUpdate("1.0.0", nil)
+	if msg != "" {
+		t.Fatalf("expected no update when versions match, got %q", msg)
+	}
+}
+
+func TestCheckUpdate_NewVersionAvailable(t *testing.T) {
+	orig := cachePath
+	origFetch := fetchLatestVersion
+	t.Cleanup(func() {
+		cachePath = orig
+		fetchLatestVersion = origFetch
+	})
+
+	cacheDir := t.TempDir()
+	cachePath = func() string { return filepath.Join(cacheDir, "cache") }
+	fetchLatestVersion = func(*http.Client) (string, error) { return "2.0.0", nil }
+
+	msg := CheckUpdate("1.0.0", nil)
+	if msg == "" {
+		t.Fatal("expected update message")
+	}
+	if !strings.Contains(msg, "2.0.0") {
+		t.Fatalf("expected new version in message, got %q", msg)
+	}
+}
+
+func TestCheckUpdate_CachesResult(t *testing.T) {
+	orig := cachePath
+	origFetch := fetchLatestVersion
+	t.Cleanup(func() {
+		cachePath = orig
+		fetchLatestVersion = origFetch
+	})
+
+	cacheDir := t.TempDir()
+	cachePath = func() string { return filepath.Join(cacheDir, "cache") }
+	fetchLatestVersion = func(*http.Client) (string, error) { return "2.0.0", nil }
+
+	// First call — fetches
+	msg1 := CheckUpdate("1.0.0", nil)
+	if msg1 == "" {
+		t.Fatal("expected update message")
+	}
+
+	// Second call — should use cache, not call fetchLatestVersion
+	fetchLatestVersion = func(*http.Client) (string, error) {
+		t.Fatal("fetchLatestVersion should not be called a second time")
+		return "", nil
+	}
+	msg2 := CheckUpdate("1.0.0", nil)
+	if msg2 != msg1 {
+		t.Fatalf("expected cached message, got %q", msg2)
+	}
+}
+
+func TestCheckUpdate_FetchError_ReturnsEmpty(t *testing.T) {
+	orig := cachePath
+	origFetch := fetchLatestVersion
+	t.Cleanup(func() {
+		cachePath = orig
+		fetchLatestVersion = origFetch
+	})
+
+	cacheDir := t.TempDir()
+	cachePath = func() string { return filepath.Join(cacheDir, "cache") }
+	fetchLatestVersion = func(*http.Client) (string, error) { return "", fmt.Errorf("network error") }
+
+	msg := CheckUpdate("1.0.0", nil)
+	if msg != "" {
+		t.Fatalf("expected empty on fetch error, got %q", msg)
 	}
 }

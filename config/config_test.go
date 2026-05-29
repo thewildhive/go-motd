@@ -234,6 +234,79 @@ func TestDetectLegacyYAML(t *testing.T) {
 	}
 }
 
+func TestWrite_CreatesFile(t *testing.T) {
+	tempDir := t.TempDir()
+	dst := filepath.Join(tempDir, "sub", "config.json")
+
+	cfg := Config{}
+	cfg.System.ComposeDir = "/opt/compose"
+	cfg.System.TankMount = "/mnt/tank"
+
+	if err := Write(dst, cfg); err != nil {
+		t.Fatalf("Write failed: %v", err)
+	}
+
+	loaded, err := LoadJSONConfigFromPaths([]string{dst}, nil)
+	if err != nil {
+		t.Fatalf("failed to reload written config: %v", err)
+	}
+	if loaded.System.ComposeDir != "/opt/compose" {
+		t.Fatalf("compose_dir mismatch: %q", loaded.System.ComposeDir)
+	}
+	if loaded.System.TankMount != "/mnt/tank" {
+		t.Fatalf("tank_mount mismatch: %q", loaded.System.TankMount)
+	}
+}
+
+func TestWrite_RoundTripPreservesServices(t *testing.T) {
+	src := Config{}
+	src.Services.Plex = []ServiceConfig{{
+		Name: "Main", URL: "http://plex:32400", Token: "t1", Enabled: true,
+	}}
+	src.Services.Sonarr = []ServiceConfig{{
+		Name: "HD", URL: "http://sonarr:8989", APIKey: "k1", Enabled: true,
+	}}
+
+	dst := filepath.Join(t.TempDir(), "config.json")
+	if err := Write(dst, src); err != nil {
+		t.Fatalf("Write failed: %v", err)
+	}
+
+	loaded, err := LoadJSONConfigFromPaths([]string{dst}, nil)
+	if err != nil {
+		t.Fatalf("failed to reload: %v", err)
+	}
+	if len(loaded.Services.Plex) != 1 || loaded.Services.Plex[0].Token != "t1" {
+		t.Fatalf("plex config corrupted: %+v", loaded.Services.Plex)
+	}
+	if len(loaded.Services.Sonarr) != 1 || loaded.Services.Sonarr[0].APIKey != "k1" {
+		t.Fatalf("sonarr config corrupted: %+v", loaded.Services.Sonarr)
+	}
+}
+
+func TestGetConfigPaths_ReturnsExpectedOrder(t *testing.T) {
+	paths := GetConfigPaths()
+	if len(paths) < 1 {
+		t.Fatal("expected at least one config path")
+	}
+	if !strings.Contains(paths[0], ".config/motd/config.json") {
+		t.Fatalf("expected user config path, got %q", paths[0])
+	}
+}
+
+func TestGetExplicitLegacyConfigPaths_ReturnsSiblingYAML(t *testing.T) {
+	paths := GetExplicitLegacyConfigPaths("/some/path/config.json")
+	if len(paths) != 2 {
+		t.Fatalf("expected 2 legacy paths, got %d", len(paths))
+	}
+	if !strings.HasSuffix(paths[0], "/some/path/config.yml") {
+		t.Fatalf("expected config.yml sibling, got %q", paths[0])
+	}
+	if !strings.HasSuffix(paths[1], "/some/path/config.yaml") {
+		t.Fatalf("expected config.yaml sibling, got %q", paths[1])
+	}
+}
+
 func TestDetectLegacyYAML_MatchesJSONDirectory(t *testing.T) {
 	tempDir := t.TempDir()
 	userDir := filepath.Join(tempDir, "user")

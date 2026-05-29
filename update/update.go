@@ -432,6 +432,36 @@ func checkWriteAccess(execPath string) error {
 const cacheFile = "motd-version-check"
 const cacheInterval = 15 * time.Minute
 
+// fetchLatestVersion is a variable so tests can override the HTTP call.
+var fetchLatestVersion = func(client *http.Client) (string, error) {
+	return fetchLatestVersionFromURL("https://api.github.com/repos/thewildhive/go-motd/releases/latest", client)
+}
+
+func fetchLatestVersionFromURL(url string, client *http.Client) (string, error) {
+	resp, err := client.Get(url)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("GitHub API returned status %d", resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("failed to read response: %w", err)
+	}
+
+	var release GitHubRelease
+	if err := json.Unmarshal(body, &release); err != nil {
+		return "", fmt.Errorf("failed to parse release: %w", err)
+	}
+
+	return strings.TrimPrefix(release.TagName, "v"), nil
+}
+
+
 // CheckUpdate returns a non-empty update message if a newer version of motd
 // is available. Results are cached for cacheInterval to avoid hammering the
 // GitHub API on every motd invocation.
@@ -468,7 +498,8 @@ func cacheDir() (string, error) {
 	return dir, nil
 }
 
-func cachePath() string {
+// cachePath is a variable so tests can replace it with a temp directory.
+var cachePath = func() string {
 	dir, err := cacheDir()
 	if err != nil {
 		return ""
@@ -514,28 +545,3 @@ func writeCachedVersion(msg string) {
 	_ = os.WriteFile(path, []byte(data), 0644)
 }
 
-func fetchLatestVersion(client *http.Client) (string, error) {
-	url := "https://api.github.com/repos/thewildhive/go-motd/releases/latest"
-
-	resp, err := client.Get(url)
-	if err != nil {
-		return "", err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("GitHub API returned status %d", resp.StatusCode)
-	}
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", fmt.Errorf("failed to read response: %w", err)
-	}
-
-	var release GitHubRelease
-	if err := json.Unmarshal(body, &release); err != nil {
-		return "", fmt.Errorf("failed to parse release: %w", err)
-	}
-
-	return strings.TrimPrefix(release.TagName, "v"), nil
-}

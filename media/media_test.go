@@ -435,7 +435,6 @@ func TestIsPlexReadyRejectsMalformedURL(t *testing.T) {
 }
 
 func TestHasMediaServicesRequiresValidURL(t *testing.T) {
-	// A ready service with a malformed URL should not be detected
 	cfg := config.Config{}
 	cfg.Services.Plex = []config.ServiceConfig{{
 		Name: "BadURL", URL: "http//bad", Token: "secret", Enabled: true,
@@ -444,10 +443,40 @@ func TestHasMediaServicesRequiresValidURL(t *testing.T) {
 		t.Fatal("expected HasMediaServices to reject malformed URL")
 	}
 
-	// Fix the URL should make it detected
 	cfg.Services.Plex[0].URL = "http://plex:32400"
 	if !HasMediaServices(cfg) {
 		t.Fatal("expected HasMediaServices to accept valid URL")
+	}
+}
+
+func TestCountAvailableRecords_IncludesAvailable(t *testing.T) {
+	records := []json.RawMessage{
+		json.RawMessage(`{"isAvailable":true}`),
+		json.RawMessage(`{"isAvailable":false}`),
+		json.RawMessage(`{"isAvailable":true}`),
+	}
+	if got := countAvailableRecords(records); got != 2 {
+		t.Fatalf("expected 2 available records, got %d", got)
+	}
+}
+
+func TestCountAvailableRecords_Empty(t *testing.T) {
+	if got := countAvailableRecords(nil); got != 0 {
+		t.Fatalf("expected 0 for nil, got %d", got)
+	}
+	if got := countAvailableRecords([]json.RawMessage{}); got != 0 {
+		t.Fatalf("expected 0 for empty, got %d", got)
+	}
+}
+
+func TestCountAvailableRecords_InvalidJSONCounted(t *testing.T) {
+	// Records that can't be parsed are counted (safe fallback)
+	records := []json.RawMessage{
+		json.RawMessage(`not json`),
+		json.RawMessage(`{"isAvailable":true}`),
+	}
+	if got := countAvailableRecords(records); got != 2 {
+		t.Fatalf("expected 2 (1 invalid + 1 available), got %d", got)
 	}
 }
 

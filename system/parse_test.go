@@ -164,6 +164,30 @@ func TestFormatDurationNegative(t *testing.T) {
 	}
 }
 
+func TestFormatDuration_JustMinutes(t *testing.T) {
+	if got := FormatDuration(5 * time.Minute); got != "5 minutes" {
+		t.Fatalf("expected '5 minutes', got %q", got)
+	}
+}
+
+func TestFormatDuration_JustHours(t *testing.T) {
+	if got := FormatDuration(3 * time.Hour); got != "3 hours" {
+		t.Fatalf("expected '3 hours', got %q", got)
+	}
+}
+
+func TestFormatDuration_Zero(t *testing.T) {
+	if got := FormatDuration(0); got != "0 minutes" {
+		t.Fatalf("expected '0 minutes', got %q", got)
+	}
+}
+
+func TestFormatDuration_ExactDay(t *testing.T) {
+	if got := FormatDuration(48 * time.Hour); got != "2 days" {
+		t.Fatalf("expected '2 days', got %q", got)
+	}
+}
+
 func TestParseWindowsCPUPercent(t *testing.T) {
 	percent, ok := parseWindowsCPUPercent([]byte("LoadPercentage=10\nLoadPercentage=30\n"))
 	if !ok || percent != 20 {

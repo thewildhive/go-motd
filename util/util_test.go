@@ -44,6 +44,28 @@ func TestCopyFileMissingSource(t *testing.T) {
 	}
 }
 
+func TestGetUserHome_ReturnsNonEmpty(t *testing.T) {
+	home := GetUserHome()
+	if home == "" {
+		t.Fatal("expected non-empty home directory")
+	}
+	if _, err := os.Stat(home); err != nil {
+		t.Fatalf("home directory should exist: %v", err)
+	}
+}
+
+func TestHasCommand_FindsShell(t *testing.T) {
+	if !HasCommand("sh") {
+		t.Fatal("expected 'sh' to be found")
+	}
+}
+
+func TestHasCommand_NotFoundReturnsFalse(t *testing.T) {
+	if HasCommand("nonexistent-command-12345") {
+		t.Fatal("expected nonexistent command to return false")
+	}
+}
+
 func TestCopyFileSyncFailureDoesNotLeavePartial(t *testing.T) {
 	// Create a source with content
 	srcDir := t.TempDir()
