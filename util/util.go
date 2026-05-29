@@ -30,10 +30,25 @@ func CopyFile(src, dst string) error {
 	if err != nil {
 		return err
 	}
-	defer destFile.Close()
 
-	_, err = io.Copy(destFile, sourceFile)
-	return err
+	if _, err := io.Copy(destFile, sourceFile); err != nil {
+		destFile.Close()
+		os.Remove(dst)
+		return err
+	}
+
+	if err := destFile.Sync(); err != nil {
+		destFile.Close()
+		os.Remove(dst)
+		return err
+	}
+
+	if err := destFile.Close(); err != nil {
+		os.Remove(dst)
+		return err
+	}
+
+	return nil
 }
 
 func PluralSuffix(count int) string {
