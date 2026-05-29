@@ -92,7 +92,6 @@ func hasFiglet() bool {
 	return hasCommand("figlet")
 }
 
-
 func hasCommand(name string) bool {
 	_, err := exec.LookPath(name)
 	return err == nil
