@@ -182,16 +182,17 @@ func parseVnstatMonthlyUsage(output []byte, preferredInterface string, now time.
 		return 0, 0, 0, 0, fmt.Errorf("no vnstat monthly entry available")
 	}
 
-	rxGB = float64(month.Rx) / 1073741824.0
-	txGB = float64(month.Tx) / 1073741824.0
+	rxGB = float64(month.Rx) / float64(GB)
+	txGB = float64(month.Tx) / float64(GB)
 
 	day := float64(now.Day())
 	if day < 1 {
 		day = 1
 	}
 
-	rxEst = rxGB * (30.0 / day)
-	txEst = txGB * (30.0 / day)
+	daysInMonth := float64(daysInMonth(now))
+	rxEst = rxGB * (daysInMonth / day)
+	txEst = txGB * (daysInMonth / day)
 
 	return rxGB, txGB, rxEst, txEst, nil
 }

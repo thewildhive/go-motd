@@ -64,8 +64,8 @@ func ShowMemory(cfg ConfigAccessor, debug bool) {
 			if len(fields) >= 3 {
 				total, _ := strconv.ParseFloat(fields[1], 64)
 				used, _ := strconv.ParseFloat(fields[2], 64)
-				totalGB := total / 1073741824.0
-				usedGB := used / 1073741824.0
+				totalGB := total / float64(GB)
+				usedGB := used / float64(GB)
 
 				display.DotLabel("Memory")
 				fmt.Printf("%s%.2f GB / %.2f GB%s\n", display.Blue, usedGB, totalGB, display.Reset)
@@ -135,51 +135,19 @@ func ShowProcesses(cfg ConfigAccessor, debug bool) {
 }
 
 func ShowDisk(cfg ConfigAccessor, debug bool) {
-	output, err := exec.Command("df", "/").Output()
-	if err == nil {
-		lines := strings.Split(string(output), "\n")
-		if len(lines) >= 2 {
-			fields := strings.Fields(lines[1])
-			if len(fields) >= 5 {
-				used := fields[2]
-				total := fields[1]
-				pct := strings.TrimSuffix(fields[4], "%")
-
-				usedVal, _ := strconv.ParseFloat(used, 64)
-				totalVal, _ := strconv.ParseFloat(total, 64)
-
-				usedGB := usedVal / 1048576.0
-				totalGB := totalVal / 1048576.0
-
-				display.DotLabel("Disk (/)")
-				fmt.Printf("%s%.2f GB / %.2f GB (%s%% used)%s\n", display.Blue, usedGB, totalGB, pct, display.Reset)
-			}
-		}
-	}
-
+	ShowDFDisk("/", "Disk (/)")
 	if cfg.TankMount != "" {
-		output, err := exec.Command("df", cfg.TankMount).Output()
-		if err == nil {
-			lines := strings.Split(string(output), "\n")
-			if len(lines) >= 2 {
-				fields := strings.Fields(lines[1])
-				if len(fields) >= 5 {
-					used := fields[2]
-					total := fields[1]
-					pct := strings.TrimSuffix(fields[4], "%")
-
-					usedVal, _ := strconv.ParseFloat(used, 64)
-					totalVal, _ := strconv.ParseFloat(total, 64)
-
-					usedGB := usedVal / 1048576.0
-					totalGB := totalVal / 1048576.0
-
-					display.DotLabel(fmt.Sprintf("Disk (%s)", cfg.TankMount))
-					fmt.Printf("%s%.2f GB / %.2f GB (%s%% used)%s\n", display.Blue, usedGB, totalGB, pct, display.Reset)
-				}
-			}
-		}
+		ShowDFDisk(cfg.TankMount, fmt.Sprintf("Disk (%s)", cfg.TankMount))
 	}
+}
+
+var tempSensorLabels = []string{
+	"Package id 0:",    // Intel
+	"Tctl:",            // AMD
+	"Tdie:",            // AMD (Ryzen)
+	"CPU Temperature:", // ARM SoC, some AMD
+	"temp1:",           // Common fallback (w1_therm, coretemp, lm-sensors)
+	"CPUTIN:",          // Some Super I/O sensors
 }
 
 func ShowTemp(cfg ConfigAccessor, debug bool) {
@@ -192,14 +160,17 @@ func ShowTemp(cfg ConfigAccessor, debug bool) {
 		return
 	}
 
-	for _, line := range strings.Split(string(output), "\n") {
-		if strings.Contains(line, "Package id 0:") {
-			fields := strings.Fields(line)
-			if len(fields) >= 4 {
-				temp := fields[3]
-				display.DotLabel("CPU Temperature")
-				fmt.Printf("%s%s%s\n", display.Red, temp, display.Reset)
-				break
+	lines := strings.Split(string(output), "\n")
+	for _, label := range tempSensorLabels {
+		for _, line := range lines {
+			if strings.Contains(line, label) {
+				fields := strings.Fields(line)
+				if len(fields) >= 4 {
+					temp := fields[3]
+					display.DotLabel("CPU Temperature")
+					fmt.Printf("%s%s%s\n", display.Red, temp, display.Reset)
+					return
+				}
 			}
 		}
 	}

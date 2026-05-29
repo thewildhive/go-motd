@@ -108,8 +108,8 @@ func ShowMemory(cfg ConfigAccessor, debug bool) {
 		return
 	}
 
-	usedGB := float64(total-free) / 1073741824.0
-	totalGB := float64(total) / 1073741824.0
+	usedGB := float64(total-free) / float64(GB)
+	totalGB := float64(total) / float64(GB)
 	display.DotLabel("Memory")
 	fmt.Printf("%s%.2f GB / %.2f GB%s\n", display.Blue, usedGB, totalGB, display.Reset)
 }
@@ -177,8 +177,8 @@ func ShowDisk(cfg ConfigAccessor, debug bool) {
 	}
 
 	for _, disk := range disks {
-		usedGB := float64(disk.UsedBytes) / 1073741824.0
-		totalGB := float64(disk.TotalBytes) / 1073741824.0
+		usedGB := float64(disk.UsedBytes) / float64(GB)
+		totalGB := float64(disk.TotalBytes) / float64(GB)
 		display.DotLabel(fmt.Sprintf("Disk (%s)", disk.Drive))
 		fmt.Printf("%s%.2f GB / %.2f GB%s\n", display.Blue, usedGB, totalGB, display.Reset)
 	}
