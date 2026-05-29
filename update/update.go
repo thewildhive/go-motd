@@ -461,7 +461,6 @@ func fetchLatestVersionFromURL(url string, client *http.Client) (string, error) 
 	return strings.TrimPrefix(release.TagName, "v"), nil
 }
 
-
 // CheckUpdate returns a non-empty update message if a newer version of motd
 // is available. Results are cached for cacheInterval to avoid hammering the
 // GitHub API on every motd invocation.
@@ -544,4 +543,3 @@ func writeCachedVersion(msg string) {
 	data := fmt.Sprintf("%d\n%s\n", time.Now().Unix(), msg)
 	_ = os.WriteFile(path, []byte(data), 0644)
 }
-
