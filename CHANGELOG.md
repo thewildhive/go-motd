@@ -1,3 +1,8 @@
+## [v1.3.1] - 2026-05-29
+
+- fix: support variable indentation in legacy YAML migration (bf5a302)
+- docs: update AGENTS.md with multiplatform verification requirements (16b1c9d)
+
 ## [v1.3.0] - 2026-05-29
 
 - fix: add getDefaultInterface stub for windows build (8f4c308)
