@@ -5,6 +5,7 @@ import (
 	"encoding/xml"
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 
@@ -167,16 +168,27 @@ func collectMediaStatuses(cfg config.Config, client *http.Client, debug bool) []
 	return collected
 }
 
+func isValidURL(rawURL string) bool {
+	if rawURL == "" {
+		return false
+	}
+	u, err := url.Parse(rawURL)
+	if err != nil || u.Scheme == "" {
+		return false
+	}
+	return true
+}
+
 func isPlexReady(plex config.ServiceConfig) bool {
-	return plex.Enabled && plex.URL != "" && plex.Token != ""
+	return plex.Enabled && isValidURL(plex.URL) && plex.Token != ""
 }
 
 func isJellyfinReady(jellyfin config.ServiceConfig) bool {
-	return jellyfin.Enabled && jellyfin.URL != "" && jellyfin.Token != ""
+	return jellyfin.Enabled && isValidURL(jellyfin.URL) && jellyfin.Token != ""
 }
 
 func isAPIServiceReady(service config.ServiceConfig) bool {
-	return service.Enabled && service.URL != "" && service.APIKey != ""
+	return service.Enabled && isValidURL(service.URL) && service.APIKey != ""
 }
 
 func formatMediaLine(label, text, color string) string {

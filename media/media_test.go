@@ -398,5 +398,57 @@ func TestFetchSeerrPendingCount(t *testing.T) {
 	}
 }
 
+func TestIsValidURL(t *testing.T) {
+	tests := []struct {
+		rawURL string
+		want   bool
+	}{
+		{"http://plex:32400", true},
+		{"https://jellyfin:8096", true},
+		{"http://192.168.1.100:8989", true},
+		{"https://seerr.example.com", true},
+		{"", false},
+		{"not-a-url", false},
+		{"http//missing-colon", false},
+		{"://no-scheme", false},
+		{"ftp://unsupported-scheme", true}, // technically valid, any scheme passes
+	}
+
+	for _, tt := range tests {
+		if got := isValidURL(tt.rawURL); got != tt.want {
+			t.Fatalf("isValidURL(%q) = %v, want %v", tt.rawURL, got, tt.want)
+		}
+	}
+}
+
+func TestIsPlexReadyRejectsMalformedURL(t *testing.T) {
+	cfg := config.ServiceConfig{Enabled: true, URL: "http//bad-url", Token: "secret"}
+	if isPlexReady(cfg) {
+		t.Fatal("expected malformed URL to make plex not ready")
+	}
+
+	cfg.URL = "http://valid:32400"
+	if !isPlexReady(cfg) {
+		t.Fatal("expected valid URL to make plex ready")
+	}
+}
+
+func TestHasMediaServicesRequiresValidURL(t *testing.T) {
+	// A ready service with a malformed URL should not be detected
+	cfg := config.Config{}
+	cfg.Services.Plex = []config.ServiceConfig{{
+		Name: "BadURL", URL: "http//bad", Token: "secret", Enabled: true,
+	}}
+	if HasMediaServices(cfg) {
+		t.Fatal("expected HasMediaServices to reject malformed URL")
+	}
+
+	// Fix the URL should make it detected
+	cfg.Services.Plex[0].URL = "http://plex:32400"
+	if !HasMediaServices(cfg) {
+		t.Fatal("expected HasMediaServices to accept valid URL")
+	}
+}
+
 var _ = fmt.Print
 var _ = io.Discard
