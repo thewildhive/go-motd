@@ -1,3 +1,8 @@
+## [v1.3.0] - 2026-05-29
+
+- fix: add getDefaultInterface stub for windows build (8f4c308)
+- feat: add motd configure interactive setup wizard (closes #32) (425dbde)
+
 ## [v1.2.3] - 2026-05-29
 
 - fix: tolerate flat service fields in legacy YAML migration (c6e1e65)
