@@ -478,4 +478,3 @@ func fetchSeerrPendingCount(client *http.Client, baseURL, apiKey string) (int, e
 
 	return result.Pending, nil
 }
-
