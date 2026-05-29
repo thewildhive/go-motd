@@ -1,3 +1,8 @@
+## [v1.2.1] - 2026-05-29
+
+- fix: add missing strconv import in system/windows.go (29346ed)
+- refactor: split monolith into packages and eliminate global state (a820e1b)
+
 ## [v1.2.0] - 2026-05-29
 
 - feat: replace semantic-release with svu for Go-native versioning (2105122)
