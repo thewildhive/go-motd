@@ -244,7 +244,9 @@ func TestHasMediaServicesRequiresURLAndCredentials(t *testing.T) {
 			missingAuth: config.ServiceConfig{URL: "http://plex:32400", Enabled: true},
 			ready:       config.ServiceConfig{URL: "http://plex:32400", Token: "secret", Enabled: true},
 			disabled:    config.ServiceConfig{URL: "http://plex:32400", Token: "secret", Enabled: false},
-			apply:       func(cfg *config.Config, service config.ServiceConfig) { cfg.Services.Plex = []config.ServiceConfig{service} },
+			apply: func(cfg *config.Config, service config.ServiceConfig) {
+				cfg.Services.Plex = []config.ServiceConfig{service}
+			},
 		},
 		{
 			name:        "jellyfin",
@@ -252,7 +254,9 @@ func TestHasMediaServicesRequiresURLAndCredentials(t *testing.T) {
 			missingAuth: config.ServiceConfig{URL: "http://jellyfin:8096", Enabled: true},
 			ready:       config.ServiceConfig{URL: "http://jellyfin:8096", Token: "secret", Enabled: true},
 			disabled:    config.ServiceConfig{URL: "http://jellyfin:8096", Token: "secret", Enabled: false},
-			apply:       func(cfg *config.Config, service config.ServiceConfig) { cfg.Services.Jellyfin = []config.ServiceConfig{service} },
+			apply: func(cfg *config.Config, service config.ServiceConfig) {
+				cfg.Services.Jellyfin = []config.ServiceConfig{service}
+			},
 		},
 		{
 			name:        "sonarr",
@@ -260,7 +264,9 @@ func TestHasMediaServicesRequiresURLAndCredentials(t *testing.T) {
 			missingAuth: config.ServiceConfig{URL: "http://sonarr:8989", Enabled: true},
 			ready:       config.ServiceConfig{URL: "http://sonarr:8989", APIKey: "secret", Enabled: true},
 			disabled:    config.ServiceConfig{URL: "http://sonarr:8989", APIKey: "secret", Enabled: false},
-			apply:       func(cfg *config.Config, service config.ServiceConfig) { cfg.Services.Sonarr = []config.ServiceConfig{service} },
+			apply: func(cfg *config.Config, service config.ServiceConfig) {
+				cfg.Services.Sonarr = []config.ServiceConfig{service}
+			},
 		},
 		{
 			name:        "radarr",
@@ -268,7 +274,9 @@ func TestHasMediaServicesRequiresURLAndCredentials(t *testing.T) {
 			missingAuth: config.ServiceConfig{URL: "http://radarr:7878", Enabled: true},
 			ready:       config.ServiceConfig{URL: "http://radarr:7878", APIKey: "secret", Enabled: true},
 			disabled:    config.ServiceConfig{URL: "http://radarr:7878", APIKey: "secret", Enabled: false},
-			apply:       func(cfg *config.Config, service config.ServiceConfig) { cfg.Services.Radarr = []config.ServiceConfig{service} },
+			apply: func(cfg *config.Config, service config.ServiceConfig) {
+				cfg.Services.Radarr = []config.ServiceConfig{service}
+			},
 		},
 		{
 			name:        "seerr",
@@ -276,7 +284,9 @@ func TestHasMediaServicesRequiresURLAndCredentials(t *testing.T) {
 			missingAuth: config.ServiceConfig{URL: "http://seerr:5055", Enabled: true},
 			ready:       config.ServiceConfig{URL: "http://seerr:5055", APIKey: "secret", Enabled: true},
 			disabled:    config.ServiceConfig{URL: "http://seerr:5055", APIKey: "secret", Enabled: false},
-			apply:       func(cfg *config.Config, service config.ServiceConfig) { cfg.Services.Seerr = []config.ServiceConfig{service} },
+			apply: func(cfg *config.Config, service config.ServiceConfig) {
+				cfg.Services.Seerr = []config.ServiceConfig{service}
+			},
 		},
 	}
 
