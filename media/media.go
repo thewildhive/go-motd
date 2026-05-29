@@ -11,6 +11,7 @@ import (
 
 	"motd/config"
 	"motd/display"
+	"motd/util"
 )
 
 type plexSessionsResponse struct {
@@ -407,7 +408,7 @@ func renderSonarrInstance(sonarr config.ServiceConfig, client *http.Client, debu
 		return formatMediaLine(label, "No missing episodes", display.Green), true
 	}
 
-	return formatMediaLine(label, fmt.Sprintf("%d missing episode%s", count, pluralSuffix(count)), display.Yellow), true
+	return formatMediaLine(label, fmt.Sprintf("%d missing episode%s", count, util.PluralSuffix(count)), display.Yellow), true
 }
 
 func renderRadarrInstance(radarr config.ServiceConfig, client *http.Client, debug bool) (string, bool) {
@@ -439,7 +440,7 @@ func renderRadarrInstance(radarr config.ServiceConfig, client *http.Client, debu
 		return formatMediaLine(label, "No missing movies", display.Green), true
 	}
 
-	return formatMediaLine(label, fmt.Sprintf("%d missing movie%s", count, pluralSuffix(count)), display.Yellow), true
+	return formatMediaLine(label, fmt.Sprintf("%d missing movie%s", count, util.PluralSuffix(count)), display.Yellow), true
 }
 
 func renderSeerrInstance(seerr config.ServiceConfig, client *http.Client, debug bool) (string, bool) {
@@ -454,7 +455,7 @@ func renderSeerrInstance(seerr config.ServiceConfig, client *http.Client, debug 
 		return formatMediaLine(label, "No pending requests", display.Green), true
 	}
 
-	return formatMediaLine(label, fmt.Sprintf("%d pending request%s", pending, pluralSuffix(pending)), display.Yellow), true
+	return formatMediaLine(label, fmt.Sprintf("%d pending request%s", pending, util.PluralSuffix(pending)), display.Yellow), true
 }
 
 func fetchSeerrPendingCount(client *http.Client, baseURL, apiKey string) (int, error) {
@@ -478,9 +479,3 @@ func fetchSeerrPendingCount(client *http.Client, baseURL, apiKey string) (int, e
 	return result.Pending, nil
 }
 
-func pluralSuffix(count int) string {
-	if count == 1 {
-		return ""
-	}
-	return "s"
-}
