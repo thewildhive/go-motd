@@ -164,6 +164,14 @@ jobs:
           zip "motd-${RELEASE_VERSION}-windows-amd64.zip" motd-windows-amd64.exe
           sha256sum *.tar.gz *.zip > archive-checksums.txt
 
+      - name: Pull latest main
+        if: steps.version.outputs.needed == 'true'
+        # Rebase on latest main so we don't race with recent merges
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git pull --rebase origin main
+
       - name: Update CHANGELOG.md
         if: steps.version.outputs.needed == 'true'
         env:
@@ -205,9 +213,6 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-
-          # Pull latest main in case another merge happened since checkout
-          git pull --rebase origin main
 
           # Commit the CHANGELOG update
           git add CHANGELOG.md
