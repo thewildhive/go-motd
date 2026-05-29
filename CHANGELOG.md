@@ -1,3 +1,7 @@
+## [v1.4.1] - 2026-05-29
+
+- refactor: replace external tool deps with native Go implementations (f9edb5e)
+
 ## [v1.4.0] - 2026-05-29
 
 - feat: add delete option to configure wizard for existing services (a7f860e)
