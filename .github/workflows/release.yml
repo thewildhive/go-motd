@@ -52,14 +52,8 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v6
-        with:
-          node-version: "24"
-          cache: npm
-
-      - name: Install Node.js dependencies
-        run: npm ci
+      - name: Install svu
+        run: go install github.com/caarlos0/svu/v2@latest
 
       - name: Verify formatting
         run: |
@@ -79,35 +73,28 @@ jobs:
           go build -buildvcs=false -o /tmp/motd-test .
           /tmp/motd-test -h
 
-      - name: Preview semantic release
-        id: preview
+      - name: Capture previous tag
+        id: previous_tag
         if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.tag == '' }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          set -euo pipefail
-          set +e
-          OUTPUT="$(npx semantic-release --dry-run 2>&1)"
-          STATUS=$?
-          set -e
-          printf '%s\n' "$OUTPUT"
-          if [ "$STATUS" -ne 0 ]; then
-            exit "$STATUS"
-          fi
+          tag=$(git describe --tags --abbrev=0 --match "v*" 2>/dev/null || true)
+          printf 'value=%s\n' "$tag" >> "$GITHUB_OUTPUT"
+          echo "Previous tag: $tag"
 
-          VERSION=""
-          if [[ "$OUTPUT" =~ The\ next\ release\ version\ is\ ([0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?) ]]; then
-            VERSION="${BASH_REMATCH[1]}"
+      - name: Determine next version
+        id: version
+        if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.tag == '' }}
+        run: |
+          eval "$(bash .github/scripts/determine-version.sh)"
+          if [ -z "$version" ]; then
+            echo "needed=false" >> "$GITHUB_OUTPUT"
+            echo "No release needed — no version-bumping commits since last tag."
+          else
+            echo "needed=true" >> "$GITHUB_OUTPUT"
+            echo "tag=$version" >> "$GITHUB_OUTPUT"
+            echo "version=${version#v}" >> "$GITHUB_OUTPUT"
+            echo "Next version: $version"
           fi
-
-          if [ -z "$VERSION" ]; then
-            echo "released=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          echo "released=true" >> "$GITHUB_OUTPUT"
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "tag=v$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Resolve manual release metadata
         id: manual_release
@@ -119,10 +106,36 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
 
-      - name: Build release binaries
-        if: steps.preview.outputs.released == 'true' || steps.manual_release.outputs.released == 'true'
+      - name: Generate changelog
+        if: ${{ steps.version.outputs.needed == 'true' }}
         env:
-          RELEASE_VERSION: ${{ steps.preview.outputs.version || steps.manual_release.outputs.version }}
+          RELEASE_VERSION: ${{ steps.version.outputs.version || steps.manual_release.outputs.version }}
+          RELEASE_TAG_NAME: ${{ steps.version.outputs.tag || steps.manual_release.outputs.tag }}
+        run: |
+          PREV="${{ steps.previous_tag.outputs.value }}"
+          DATE=$(date -u +%Y-%m-%d)
+          {
+            printf '## [%s] - %s\n\n' "$RELEASE_TAG_NAME" "$DATE"
+            if [ -n "$PREV" ]; then
+              git log "$PREV..HEAD" --no-merges \
+                --format='- %s (%h)' \
+                --grep='^feat:\|^fix:\|^perf:\|^refactor:\|^build:\|^docs:' \
+                2>/dev/null || true
+            else
+              git log HEAD --no-merges \
+                --format='- %s (%h)' \
+                --grep='^feat:\|^fix:\|^perf:\|^refactor:\|^build:\|^docs:' \
+                2>/dev/null || true
+            fi
+            printf '\n'
+          } > /tmp/release-notes.md
+          echo "Release notes generated:"
+          cat /tmp/release-notes.md
+
+      - name: Build release binaries
+        if: ${{ steps.version.outputs.needed == 'true' || steps.manual_release.outputs.released == 'true' }}
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.version || steps.manual_release.outputs.version }}
         run: |
           set -euo pipefail
           mkdir -p release
@@ -137,9 +150,9 @@ jobs:
           sha256sum motd-linux-amd64 motd-linux-arm64 motd-darwin-amd64 motd-darwin-arm64 motd-windows-amd64.exe > checksums.txt
 
       - name: Package release artifacts
-        if: steps.preview.outputs.released == 'true' || steps.manual_release.outputs.released == 'true'
+        if: ${{ steps.version.outputs.needed == 'true' || steps.manual_release.outputs.released == 'true' }}
         env:
-          RELEASE_VERSION: ${{ steps.preview.outputs.version || steps.manual_release.outputs.version }}
+          RELEASE_VERSION: ${{ steps.version.outputs.version || steps.manual_release.outputs.version }}
         run: |
           set -euo pipefail
           cd release
@@ -151,15 +164,69 @@ jobs:
           zip "motd-${RELEASE_VERSION}-windows-amd64.zip" motd-windows-amd64.exe
           sha256sum *.tar.gz *.zip > archive-checksums.txt
 
-      - name: Publish with semantic-release
-        if: ${{ github.event_name != 'workflow_dispatch' && steps.preview.outputs.released == 'true' }}
+      - name: Update CHANGELOG.md
+        if: steps.version.outputs.needed == 'true'
+        env:
+          PREV_TAG: ${{ steps.previous_tag.outputs.value }}
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+          RELEASE_TAG_NAME: ${{ steps.version.outputs.tag }}
+        run: |
+          DATE=$(date -u +%Y-%m-%d)
+          {
+            printf '## [%s] - %s\n\n' "$RELEASE_TAG_NAME" "$DATE"
+            if [ -n "$PREV_TAG" ]; then
+              git log "$PREV_TAG..HEAD" --no-merges \
+                --format='- %s (%h)' \
+                --grep='^feat:\|^fix:\|^perf:\|^refactor:\|^build:\|^docs:' \
+                2>/dev/null || true
+            else
+              git log HEAD --no-merges \
+                --format='- %s (%h)' \
+                --grep='^feat:\|^fix:\|^perf:\|^refactor:\|^build:\|^docs:' \
+                2>/dev/null || true
+            fi
+            printf '\n'
+          } > /tmp/changelog-entry.md
+
+          # Prepend new entry to existing CHANGELOG.md
+          if [ -f CHANGELOG.md ]; then
+            cat /tmp/changelog-entry.md CHANGELOG.md > /tmp/new-changelog.md
+            mv /tmp/new-changelog.md CHANGELOG.md
+          else
+            {
+              printf '# Changelog\n\n'
+              cat /tmp/changelog-entry.md
+            } > CHANGELOG.md
+          fi
+          echo "CHANGELOG.md updated."
+
+      - name: Commit CHANGELOG.md and create tag
+        if: steps.version.outputs.needed == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Commit the CHANGELOG update
+          git add CHANGELOG.md
+          git commit -m "chore(release): ${{ steps.version.outputs.version }}"
+
+          # Tag the release commit
+          git tag -a "${{ steps.version.outputs.tag }}" -m "Release ${{ steps.version.outputs.tag }}"
+
+          # Push both the commit and the tag
+          git push origin main "${{ steps.version.outputs.tag }}"
+
+      - name: Create GitHub Release
+        if: steps.version.outputs.needed == 'true'
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          body_path: /tmp/release-notes.md
+          files: |
+            release/*
+          fail_on_unmatched_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GIT_AUTHOR_NAME: github-actions[bot]
-          GIT_AUTHOR_EMAIL: github-actions[bot]@users.noreply.github.com
-          GIT_COMMITTER_NAME: github-actions[bot]
-          GIT_COMMITTER_EMAIL: github-actions[bot]@users.noreply.github.com
-        run: npx semantic-release
 
       - name: Upload rebuilt release assets
         if: ${{ github.event_name == 'workflow_dispatch' && steps.manual_release.outputs.released == 'true' }}

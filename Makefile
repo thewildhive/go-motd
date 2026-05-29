@@ -8,7 +8,7 @@ GO_BUILD_FLAGS=-buildvcs=false
 LDFLAGS=-ldflags="-s -w -X main.VERSION=$(VERSION)"
 INSTALL_PATH=/usr/local/bin
 
-.PHONY: all build build-optimized clean test smoke install uninstall cross-compile checksums package release help
+.PHONY: all build build-optimized clean test smoke install uninstall cross-compile checksums package release svu-version help
 
 all: build-optimized
 
@@ -95,6 +95,11 @@ package: clean
 	@echo "Release packages created in $(BIN_DIR)/release/"
 	@ls -la $(BIN_DIR)/release/
 
+# Show next version using svu (requires svu: go install github.com/caarlos0/svu/v2@latest)
+svu-version:
+	@echo "Current version:  $$(svu current 2>/dev/null || echo no-tags)"
+	@echo "Next version:     $$(svu next --force-patch-increment 2>/dev/null || echo unknown)"
+
 # Full release process (build, package, checksums)
 release: clean package
 	@echo "Release complete!"
@@ -114,5 +119,5 @@ help:
 	@echo "  make cross-compile   - Build for multiple platforms"
 	@echo "  make checksums       - Generate SHA256 checksums"
 	@echo "  make package         - Create release packages"
-	@echo "  make release         - Full release process"
+	@echo "  make svu-version     - Show current and next versions using svu"
 	@echo "  make help            - Show this help message"

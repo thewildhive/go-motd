@@ -16,16 +16,22 @@ This project uses [Conventional Commits](https://www.conventionalcommits.org/) t
 
 ### Types
 
+Only commit types that affect the compiled binary trigger a release:
+
 - `feat`: New feature (creates a **minor** version)
 - `fix`: Bug fix (creates a **patch** version)
-- `docs`: Documentation changes (**no release** by default)
-- `style`: Code style changes (formatting, etc.) (creates a **patch** version)
-- `refactor`: Code refactoring (creates a **patch** version)
 - `perf`: Performance improvements (creates a **minor** version)
-- `test`: Adding or updating tests (creates a **patch** version)
+- `refactor`: Code restructuring (creates a **patch** version)
 - `build`: Build system or dependency changes (creates a **patch** version)
-- `ci`: CI/CD configuration changes (**no release** by default)
-- `chore`: Maintenance tasks (**no release** by default)
+- `BREAKING CHANGE:` in the footer creates a **major** version
+
+Types that do **not** trigger a release (no effect on the compiled binary):
+
+- `docs`: Documentation only
+- `style`: Formatting, whitespace, code style only
+- `test`: Adding or updating tests
+- `ci`: CI/CD configuration changes
+- `chore`: Maintenance tasks
 
 ### Examples
 
@@ -42,19 +48,20 @@ test: add unit tests for bandwidth monitoring
 Releases are automatically handled by the GitHub Actions release workflow on pushes to `main` (or manual dispatch):
 
 1. **Quality gates**: `gofmt`, `go test`, `go vet`, and `go build` run first.
-2. **Semantic versioning**: `semantic-release` analyzes Conventional Commit messages and decides whether to publish.
-3. **Tag and changelog**: On publish, `semantic-release` creates the `v<version>` tag, updates `CHANGELOG.md`, and pushes a `chore(release)` commit.
-4. **GitHub release**: `semantic-release` publishes release notes and creates the GitHub release entry.
-5. **Release assets**: The workflow builds cross-platform binaries with `-X main.VERSION=<version>`, packages archives, generates `checksums.txt`, and uploads assets to the same tag.
+2. **Semantic versioning**: [`svu`](https://github.com/caarlos0/svu) analyses conventional commits since the last tag and determines the next version.
+3. **Changelog**: Release notes are generated from git history between the last tag and HEAD.
+4. **Tag and commit**: A `vX.Y.Z` tag is created on the release commit and pushed, and `CHANGELOG.md` is updated.
+5. **Build binaries**: Cross-platform binaries are built with linker-injected `main.VERSION`.
+6. **GitHub Release**: A release is created with archives, checksums, and changelog attached.
+
+Releases run entirely with Go-native tooling — no npm or Node.js dependencies are involved.
 
 ## Development Workflow
 
 1. Create a feature branch from `main`
 2. Make your changes following the commit convention
 3. Push your branch and create a pull request
-4. Once merged to `main`, release-worthy commits will automatically publish a release
-
-Commit messages should follow the documented types so semantic-release can compute the correct version bump.
+4. Once merged to `main`, release automation evaluates commits and publishes a release only when commit types require one
 
 ## Testing
 
