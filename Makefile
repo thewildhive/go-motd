@@ -8,7 +8,7 @@ GO_BUILD_FLAGS=-buildvcs=false
 LDFLAGS=-ldflags="-s -w -X main.VERSION=$(VERSION)"
 INSTALL_PATH=/usr/local/bin
 
-.PHONY: all build build-optimized clean test smoke install uninstall cross-compile checksums package release svu-version help
+.PHONY: all build build-optimized clean test smoke check install uninstall cross-compile checksums package release svu-version help
 
 all: build-optimized
 
@@ -35,6 +35,21 @@ clean:
 # Run unit tests
 test:
 	$(GO) test ./...
+
+# Run all quality checks (formatting, vet, tests)
+check:
+	@echo "Checking formatting..."
+	@UNFORMATTED=$$(gofmt -l .); \
+	if [ -n "$$UNFORMATTED" ]; then \
+		echo "The following files are not gofmt-formatted:"; \
+		echo "$$UNFORMATTED"; \
+		exit 1; \
+	fi
+	@echo "Running go vet..."
+	$(GO) vet ./...
+	@echo "Running tests..."
+	$(GO) test ./...
+	@echo "All checks passed!"
 
 # Build and run a help smoke test
 smoke: build-optimized
@@ -113,6 +128,7 @@ help:
 	@echo "  make build-optimized - Build optimized binary"
 	@echo "  make clean           - Remove build artifacts"
 	@echo "  make test            - Run Go tests"
+	@echo "  make check           - Run all quality checks (gofmt, vet, test)"
 	@echo "  make smoke           - Build and run help smoke test"
 	@echo "  make install         - Install to $(INSTALL_PATH)"
 	@echo "  make uninstall       - Remove from $(INSTALL_PATH)"
