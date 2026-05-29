@@ -1,6 +1,6 @@
 //go:build !windows && !darwin
 
-package main
+package system
 
 import (
 	"fmt"
@@ -9,9 +9,11 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"motd/display"
 )
 
-func showOS() {
+func ShowOS(cfg ConfigAccessor, debug bool) {
 	release := "Unknown"
 	data, err := os.ReadFile("/etc/os-release")
 	if err == nil {
@@ -22,21 +24,21 @@ func showOS() {
 			}
 		}
 	}
-	dotLabel("OS Release")
-	fmt.Printf("%s%s%s\n", BLUE, release, RESET)
+	display.DotLabel("OS Release")
+	fmt.Printf("%s%s%s\n", display.Blue, release, display.Reset)
 }
 
-func showUptime() {
+func ShowUptime(cfg ConfigAccessor, debug bool) {
 	output, err := exec.Command("uptime", "-p").Output()
 	uptime := "unknown"
 	if err == nil {
 		uptime = strings.TrimPrefix(strings.TrimSpace(string(output)), "up ")
 	}
-	dotLabel("Uptime")
-	fmt.Printf("%s%s%s\n", BLUE, uptime, RESET)
+	display.DotLabel("Uptime")
+	fmt.Printf("%s%s%s\n", display.Blue, uptime, display.Reset)
 }
 
-func showLoad() {
+func ShowLoad(cfg ConfigAccessor, debug bool) {
 	output, err := exec.Command("uptime").Output()
 	load := ""
 	if err == nil {
@@ -45,11 +47,11 @@ func showLoad() {
 			load = strings.TrimSpace(parts[1])
 		}
 	}
-	dotLabel("CPU Load")
-	fmt.Printf("%s%s%s\n", BLUE, load, RESET)
+	display.DotLabel("CPU Load")
+	fmt.Printf("%s%s%s\n", display.Blue, load, display.Reset)
 }
 
-func showMemory() {
+func ShowMemory(cfg ConfigAccessor, debug bool) {
 	output, err := exec.Command("free", "-b").Output()
 	if err != nil {
 		return
@@ -65,20 +67,20 @@ func showMemory() {
 				totalGB := total / 1073741824.0
 				usedGB := used / 1073741824.0
 
-				dotLabel("Memory")
-				fmt.Printf("%s%.2f GB / %.2f GB%s\n", BLUE, usedGB, totalGB, RESET)
+				display.DotLabel("Memory")
+				fmt.Printf("%s%.2f GB / %.2f GB%s\n", display.Blue, usedGB, totalGB, display.Reset)
 			}
 			break
 		}
 	}
 }
 
-func showBandwidth() {
+func ShowBandwidth(cfg ConfigAccessor, debug bool) {
 	if !hasCommand("vnstat") {
 		return
 	}
 
-	interfaceName := strings.TrimSpace(config.System.Network.Interface)
+	interfaceName := strings.TrimSpace(cfg.NetworkInterface)
 	if interfaceName == "" {
 		interfaceName = getDefaultInterface()
 	}
@@ -88,51 +90,51 @@ func showBandwidth() {
 
 	output, err := exec.Command("vnstat", "--json", "m", "-i", interfaceName).Output()
 	if err != nil {
-		if strings.TrimSpace(config.System.Network.Interface) == "" {
+		if strings.TrimSpace(cfg.NetworkInterface) == "" {
 			output, err = exec.Command("vnstat", "--json", "m").Output()
 		}
 	}
 
 	if err != nil {
-		debugLog("vnstat command failed: %v", err)
+		display.DebugLog(debug, "vnstat command failed: %v", err)
 		return
 	}
 
 	rxGB, txGB, rxEst, txEst, err := parseVnstatMonthlyUsage(output, interfaceName, time.Now())
 	if err != nil {
-		debugLog("Failed to parse vnstat data for %s: %v", interfaceName, err)
+		display.DebugLog(debug, "Failed to parse vnstat data for %s: %v", interfaceName, err)
 		return
 	}
 
-	dotLabel("Bandwidth (rx)")
-	fmt.Printf("%s%.2f GB / %.2f GB est%s\n", BLUE, rxGB, rxEst, RESET)
-	dotLabel("Bandwidth (tx)")
-	fmt.Printf("%s%.2f GB / %.2f GB est%s\n", BLUE, txGB, txEst, RESET)
+	display.DotLabel("Bandwidth (rx)")
+	fmt.Printf("%s%.2f GB / %.2f GB est%s\n", display.Blue, rxGB, rxEst, display.Reset)
+	display.DotLabel("Bandwidth (tx)")
+	fmt.Printf("%s%.2f GB / %.2f GB est%s\n", display.Blue, txGB, txEst, display.Reset)
 }
 
-func showUser() {
+func ShowUser(cfg ConfigAccessor, debug bool) {
 	output, err := exec.Command("who").Output()
 	if err != nil {
 		return
 	}
 
 	count := countUniqueWhoUsers(output)
-	dotLabel("Logged in users")
-	fmt.Printf("%s%d%s\n", BLUE, count, RESET)
+	display.DotLabel("Logged in users")
+	fmt.Printf("%s%d%s\n", display.Blue, count, display.Reset)
 }
 
-func showProcesses() {
+func ShowProcesses(cfg ConfigAccessor, debug bool) {
 	output, err := exec.Command("ps", "-e", "--no-headers").Output()
 	if err != nil {
 		return
 	}
 
 	count := countNonEmptyLines(output)
-	dotLabel("Processes")
-	fmt.Printf("%s%d%s\n", BLUE, count, RESET)
+	display.DotLabel("Processes")
+	fmt.Printf("%s%d%s\n", display.Blue, count, display.Reset)
 }
 
-func showDisk() {
+func ShowDisk(cfg ConfigAccessor, debug bool) {
 	output, err := exec.Command("df", "/").Output()
 	if err == nil {
 		lines := strings.Split(string(output), "\n")
@@ -149,14 +151,14 @@ func showDisk() {
 				usedGB := usedVal / 1048576.0
 				totalGB := totalVal / 1048576.0
 
-				dotLabel("Disk (/)")
-				fmt.Printf("%s%.2f GB / %.2f GB (%s%% used)%s\n", BLUE, usedGB, totalGB, pct, RESET)
+				display.DotLabel("Disk (/)")
+				fmt.Printf("%s%.2f GB / %.2f GB (%s%% used)%s\n", display.Blue, usedGB, totalGB, pct, display.Reset)
 			}
 		}
 	}
 
-	if config.System.TankMount != "" {
-		output, err := exec.Command("df", config.System.TankMount).Output()
+	if cfg.TankMount != "" {
+		output, err := exec.Command("df", cfg.TankMount).Output()
 		if err == nil {
 			lines := strings.Split(string(output), "\n")
 			if len(lines) >= 2 {
@@ -172,15 +174,15 @@ func showDisk() {
 					usedGB := usedVal / 1048576.0
 					totalGB := totalVal / 1048576.0
 
-					dotLabel(fmt.Sprintf("Disk (%s)", config.System.TankMount))
-					fmt.Printf("%s%.2f GB / %.2f GB (%s%% used)%s\n", BLUE, usedGB, totalGB, pct, RESET)
+					display.DotLabel(fmt.Sprintf("Disk (%s)", cfg.TankMount))
+					fmt.Printf("%s%.2f GB / %.2f GB (%s%% used)%s\n", display.Blue, usedGB, totalGB, pct, display.Reset)
 				}
 			}
 		}
 	}
 }
 
-func showTemp() {
+func ShowTemp(cfg ConfigAccessor, debug bool) {
 	if !hasCommand("sensors") {
 		return
 	}
@@ -195,8 +197,8 @@ func showTemp() {
 			fields := strings.Fields(line)
 			if len(fields) >= 4 {
 				temp := fields[3]
-				dotLabel("CPU Temperature")
-				fmt.Printf("%s%s%s\n", RED, temp, RESET)
+				display.DotLabel("CPU Temperature")
+				fmt.Printf("%s%s%s\n", display.Red, temp, display.Reset)
 				break
 			}
 		}

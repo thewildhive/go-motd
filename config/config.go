@@ -1,4 +1,4 @@
-package main
+package config
 
 import (
 	"bytes"
@@ -36,19 +36,19 @@ type Config struct {
 	} `json:"system"`
 }
 
-var errNoJSONConfig = errors.New("no JSON config files found")
+var ErrNoJSONConfig = errors.New("no JSON config files found")
 
-type legacyConfigError struct {
-	legacyPath   string
-	requiredPath string
-	fallbackPath string
+type LegacyConfigError struct {
+	LegacyPath   string
+	RequiredPath string
+	FallbackPath string
 }
 
-func (e *legacyConfigError) Error() string {
-	return fmt.Sprintf("legacy YAML config detected at %s", e.legacyPath)
+func (e *LegacyConfigError) Error() string {
+	return fmt.Sprintf("legacy YAML config detected at %s", e.LegacyPath)
 }
 
-func getConfigPaths() []string {
+func GetConfigPaths() []string {
 	home := getUserHome()
 	userConfig := filepath.Join(home, ".config", "motd", "config.json")
 	if home == "" {
@@ -57,7 +57,7 @@ func getConfigPaths() []string {
 	return []string{userConfig, "/opt/motd/config.json"}
 }
 
-func getLegacyConfigPaths() []string {
+func GetLegacyConfigPaths() []string {
 	home := getUserHome()
 	userYML := filepath.Join(home, ".config", "motd", "config.yml")
 	userYAML := filepath.Join(home, ".config", "motd", "config.yaml")
@@ -67,12 +67,12 @@ func getLegacyConfigPaths() []string {
 	return []string{userYML, userYAML, "/opt/motd/config.yml", "/opt/motd/config.yaml"}
 }
 
-func getExplicitLegacyConfigPaths(configPath string) []string {
+func GetExplicitLegacyConfigPaths(configPath string) []string {
 	dir := filepath.Dir(configPath)
 	return []string{filepath.Join(dir, "config.yml"), filepath.Join(dir, "config.yaml")}
 }
 
-func decodeJSONConfig(data []byte) (Config, error) {
+func DecodeJSONConfig(data []byte) (Config, error) {
 	var parsedConfig Config
 
 	decoder := json.NewDecoder(bytes.NewReader(data))
@@ -92,7 +92,7 @@ func decodeJSONConfig(data []byte) (Config, error) {
 	return parsedConfig, nil
 }
 
-func loadJSONConfigFromPaths(paths []string) (Config, error) {
+func LoadJSONConfigFromPaths(paths []string, debugFn func(string, ...interface{})) (Config, error) {
 	var loadedConfig Config
 
 	for _, configPath := range paths {
@@ -108,26 +108,32 @@ func loadJSONConfigFromPaths(paths []string) (Config, error) {
 			return loadedConfig, fmt.Errorf("config file path is a directory: %s", configPath)
 		}
 
-		debugLog("Loading JSON config from: %s", configPath)
+		if debugFn != nil {
+			debugFn("Loading JSON config from: %s", configPath)
+		}
 		data, err := os.ReadFile(configPath)
 		if err != nil {
 			return loadedConfig, fmt.Errorf("failed to read config file %s: %w", configPath, err)
 		}
 
-		parsedConfig, err := decodeJSONConfig(data)
+		parsedConfig, err := DecodeJSONConfig(data)
 		if err != nil {
 			return loadedConfig, fmt.Errorf("failed to parse JSON config %s: %w", configPath, err)
 		}
 
-		debugLog("Successfully loaded JSON config from: %s", configPath)
+		if debugFn != nil {
+			debugFn("Successfully loaded JSON config from: %s", configPath)
+		}
 		return parsedConfig, nil
 	}
 
-	debugLog("No JSON config files found")
-	return loadedConfig, errNoJSONConfig
+	if debugFn != nil {
+		debugFn("No JSON config files found")
+	}
+	return loadedConfig, ErrNoJSONConfig
 }
 
-func detectLegacyYAMLConfigFromPaths(legacyPaths, jsonPaths []string) *legacyConfigError {
+func DetectLegacyYAMLConfig(legacyPaths, jsonPaths []string) *LegacyConfigError {
 	fallbackPath := ""
 	if len(jsonPaths) > 1 {
 		fallbackPath = jsonPaths[1]
@@ -137,10 +143,10 @@ func detectLegacyYAMLConfigFromPaths(legacyPaths, jsonPaths []string) *legacyCon
 		if _, err := os.Stat(legacyPath); err == nil {
 			requiredPath := matchingJSONConfigPath(legacyPath, jsonPaths, i)
 
-			return &legacyConfigError{
-				legacyPath:   legacyPath,
-				requiredPath: requiredPath,
-				fallbackPath: fallbackPath,
+			return &LegacyConfigError{
+				LegacyPath:   legacyPath,
+				RequiredPath: requiredPath,
+				FallbackPath: fallbackPath,
 			}
 		}
 	}
@@ -165,66 +171,57 @@ func matchingJSONConfigPath(legacyPath string, jsonPaths []string, legacyIndex i
 	return ""
 }
 
-func loadRuntimeConfigFromPaths(jsonPaths, legacyPaths []string) (Config, error) {
-	loadedConfig, err := loadJSONConfigFromPaths(jsonPaths)
+func LoadFromPaths(jsonPaths, legacyPaths []string, debugFn func(string, ...interface{})) (Config, error) {
+	loadedConfig, err := LoadJSONConfigFromPaths(jsonPaths, debugFn)
 	if err == nil {
 		return loadedConfig, nil
 	}
 
-	if errors.Is(err, errNoJSONConfig) {
-		if legacyErr := detectLegacyYAMLConfigFromPaths(legacyPaths, jsonPaths); legacyErr != nil {
+	if errors.Is(err, ErrNoJSONConfig) {
+		if legacyErr := DetectLegacyYAMLConfig(legacyPaths, jsonPaths); legacyErr != nil {
 			return Config{}, legacyErr
 		}
 
-		debugLog("No JSON configuration found; continuing with system-only defaults")
+		if debugFn != nil {
+			debugFn("No JSON configuration found; continuing with system-only defaults")
+		}
 		return Config{}, nil
 	}
 
 	return Config{}, err
 }
 
-func loadRuntimeConfig(configPath string, noConfig bool) (Config, error) {
+func Load(configPath string, noConfig bool, debugFn func(string, ...interface{})) (Config, error) {
 	if noConfig {
-		debugLog("Config loading skipped by -no-config")
+		if debugFn != nil {
+			debugFn("Config loading skipped by -no-config")
+		}
 		return Config{}, nil
 	}
 
 	if strings.TrimSpace(configPath) != "" {
-		return loadRuntimeConfigFromPaths([]string{configPath}, getExplicitLegacyConfigPaths(configPath))
+		return LoadFromPaths([]string{configPath}, GetExplicitLegacyConfigPaths(configPath), debugFn)
 	}
 
-	return loadRuntimeConfigFromPaths(getConfigPaths(), getLegacyConfigPaths())
+	return LoadFromPaths(GetConfigPaths(), GetLegacyConfigPaths(), debugFn)
 }
 
-func printLegacyConfigError(err *legacyConfigError) {
-	fmt.Printf("%sError: Legacy YAML config is no longer supported.%s\n", RED, RESET)
-	fmt.Printf("Found legacy config at: %s\n", err.legacyPath)
-	if err.requiredPath != "" {
-		fmt.Printf("Create a JSON config at: %s\n", err.requiredPath)
-		fmt.Printf("Or migrate automatically with: motd -config %s -migrate\n", err.requiredPath)
+func PrintLegacyConfigError(err *LegacyConfigError) {
+	fmt.Printf("%sError: Legacy YAML config is no longer supported.%s\n", "\033[0;31m", "\033[0m")
+	fmt.Printf("Found legacy config at: %s\n", err.LegacyPath)
+	if err.RequiredPath != "" {
+		fmt.Printf("Create a JSON config at: %s\n", err.RequiredPath)
+		fmt.Printf("Or migrate automatically with: motd -config %s -migrate\n", err.RequiredPath)
 	}
-	if err.fallbackPath != "" {
-		fmt.Printf("Fallback JSON path: %s\n", err.fallbackPath)
+	if err.FallbackPath != "" {
+		fmt.Printf("Fallback JSON path: %s\n", err.FallbackPath)
 	}
 }
 
-func loadConfig(configPath string, noConfig bool) {
-	loadedConfig, err := loadRuntimeConfig(configPath, noConfig)
+func getUserHome() string {
+	home, err := os.UserHomeDir()
 	if err != nil {
-		var legacyErr *legacyConfigError
-		if errors.As(err, &legacyErr) {
-			printLegacyConfigError(legacyErr)
-			os.Exit(1)
-		}
-
-		fmt.Printf("%sError loading configuration: %v%s\n", RED, err, RESET)
-		os.Exit(1)
+		return ""
 	}
-
-	config = loadedConfig
-	if noConfig {
-		debugLog("Using system-only defaults")
-	} else {
-		debugLog("Runtime configuration ready")
-	}
+	return home
 }

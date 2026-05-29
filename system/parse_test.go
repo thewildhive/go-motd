@@ -1,4 +1,4 @@
-package main
+package system
 
 import (
 	"testing"
@@ -152,14 +152,14 @@ func TestParseWMICDateTime(t *testing.T) {
 }
 
 func TestFormatDuration(t *testing.T) {
-	formatted := formatDuration((49 * time.Hour) + (5 * time.Minute))
+	formatted := FormatDuration((49 * time.Hour) + (5 * time.Minute))
 	if formatted != "2 days, 1 hour, 5 minutes" {
 		t.Fatalf("unexpected duration: %s", formatted)
 	}
 }
 
 func TestFormatDurationNegative(t *testing.T) {
-	if got := formatDuration(-time.Minute); got != "0 minutes" {
+	if got := FormatDuration(-time.Minute); got != "0 minutes" {
 		t.Fatalf("expected negative duration to clamp to zero, got %q", got)
 	}
 }
@@ -192,7 +192,7 @@ func TestParseWindowsDiskCSV(t *testing.T) {
 	if len(disks) != 2 {
 		t.Fatalf("expected 2 disks, got %d", len(disks))
 	}
-	if disks[0].Name != "C:" || disks[0].SizeBytes != 1000 || disks[0].FreeBytes != 250 {
+	if disks[0].Drive != "C:" || disks[0].TotalBytes != 1000 || (disks[0].TotalBytes-disks[0].UsedBytes) != 250 {
 		t.Fatalf("unexpected first disk: %+v", disks[0])
 	}
 }
@@ -202,7 +202,7 @@ func TestParseWindowsDiskWMIC(t *testing.T) {
 	if len(disks) != 2 {
 		t.Fatalf("expected 2 disks, got %d", len(disks))
 	}
-	if disks[1].Name != "D:" || disks[1].SizeBytes != 2000 || disks[1].FreeBytes != 1000 {
+	if disks[1].Drive != "D:" || disks[1].TotalBytes != 2000 || (disks[1].TotalBytes-disks[1].UsedBytes) != 1000 {
 		t.Fatalf("unexpected second disk: %+v", disks[1])
 	}
 }

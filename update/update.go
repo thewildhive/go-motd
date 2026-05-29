@@ -1,4 +1,4 @@
-package main
+package update
 
 import (
 	"crypto/sha256"
@@ -12,7 +12,8 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
-	"time"
+
+	"motd/util"
 )
 
 type GitHubRelease struct {
@@ -24,43 +25,34 @@ type GitHubRelease struct {
 	} `json:"assets"`
 }
 
-func handleSelfUpdate() {
+func HandleSelfUpdate(version string, client *http.Client) {
 	force := false
 	if len(os.Args) > 2 && os.Args[2] == "--force" {
 		force = true
 	}
 
-	httpClient = &http.Client{
-		Timeout: CURL_TIMEOUT,
-		Transport: &http.Transport{
-			MaxIdleConns:       10,
-			IdleConnTimeout:    30 * time.Second,
-			DisableCompression: false,
-		},
-	}
+	fmt.Printf("%sChecking for updates...%s\n", "\033[0;36m", "\033[0m")
 
-	fmt.Printf("%sChecking for updates...%s\n", CYAN, RESET)
-
-	release, err := getLatestRelease()
+	release, err := getLatestRelease(client)
 	if err != nil {
-		fmt.Printf("%sError checking for updates: %v%s\n", RED, err, RESET)
+		fmt.Printf("%sError checking for updates: %v%s\n", "\033[0;31m", err, "\033[0m")
 		os.Exit(1)
 	}
 
 	latestVersion := strings.TrimPrefix(release.TagName, "v")
-	currentVersion := VERSION
+	currentVersion := version
 
-	fmt.Printf("Current version: %s%s%s\n", BLUE, currentVersion, RESET)
-	fmt.Printf("Latest version:  %s%s%s\n", BLUE, latestVersion, RESET)
+	fmt.Printf("Current version: %s%s%s\n", "\033[0;34m", currentVersion, "\033[0m")
+	fmt.Printf("Latest version:  %s%s%s\n", "\033[0;34m", latestVersion, "\033[0m")
 
-	if !force && compareVersions(currentVersion, latestVersion) >= 0 {
-		fmt.Printf("%sAlready running the latest version!%s\n", GREEN, RESET)
+	if !force && CompareVersions(currentVersion, latestVersion) >= 0 {
+		fmt.Printf("%sAlready running the latest version!%s\n", "\033[0;32m", "\033[0m")
 		return
 	}
 
 	if !force {
-		fmt.Printf("\n%sA new version is available!%s\n", YELLOW, RESET)
-		fmt.Printf("Update from %s%s%s to %s%s%s?\n", RED, currentVersion, RESET, GREEN, latestVersion, RESET)
+		fmt.Printf("\n%sA new version is available!%s\n", "\033[0;33m", "\033[0m")
+		fmt.Printf("Update from %s%s%s to %s%s%s?\n", "\033[0;31m", currentVersion, "\033[0m", "\033[0;32m", latestVersion, "\033[0m")
 		fmt.Print("Update? [y/N]: ")
 
 		var response string
@@ -71,20 +63,20 @@ func handleSelfUpdate() {
 		}
 	}
 
-	fmt.Printf("\n%sUpdating to version %s...%s\n", CYAN, latestVersion, RESET)
+	fmt.Printf("\n%sUpdating to version %s...%s\n", "\033[0;36m", latestVersion, "\033[0m")
 
-	if err := performUpdate(release, latestVersion); err != nil {
-		fmt.Printf("%sUpdate failed: %v%s\n", RED, err, RESET)
+	if err := performUpdate(release, latestVersion, client); err != nil {
+		fmt.Printf("%sUpdate failed: %v%s\n", "\033[0;31m", err, "\033[0m")
 		os.Exit(1)
 	}
 
-	fmt.Printf("%sSuccessfully updated to version %s!%s\n", GREEN, latestVersion, RESET)
+	fmt.Printf("%sSuccessfully updated to version %s!%s\n", "\033[0;32m", latestVersion, "\033[0m")
 }
 
-func getLatestRelease() (*GitHubRelease, error) {
+func getLatestRelease(client *http.Client) (*GitHubRelease, error) {
 	url := "https://api.github.com/repos/thewildhive/go-motd/releases/latest"
 
-	resp, err := httpClient.Get(url)
+	resp, err := client.Get(url)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch release info: %w", err)
 	}
@@ -107,7 +99,7 @@ func getLatestRelease() (*GitHubRelease, error) {
 	return &release, nil
 }
 
-func compareVersions(current, latest string) int {
+func CompareVersions(current, latest string) int {
 	currentParts := strings.Split(current, ".")
 	latestParts := strings.Split(latest, ".")
 
@@ -136,7 +128,7 @@ func compareVersions(current, latest string) int {
 	return 0
 }
 
-func performUpdate(release *GitHubRelease, version string) error {
+func performUpdate(release *GitHubRelease, version string, client *http.Client) error {
 	assetName := getPlatformAssetName()
 	if assetName == "" {
 		return fmt.Errorf("unsupported platform: %s/%s", runtime.GOOS, runtime.GOARCH)
@@ -154,7 +146,7 @@ func performUpdate(release *GitHubRelease, version string) error {
 		return fmt.Errorf("could not find release asset for platform %s", assetName)
 	}
 
-	checksums, err := getChecksums(release)
+	checksums, err := getChecksums(release, client)
 	if err != nil {
 		return fmt.Errorf("failed to get checksums: %w", err)
 	}
@@ -164,7 +156,7 @@ func performUpdate(release *GitHubRelease, version string) error {
 		return fmt.Errorf("failed to get executable path: %w", err)
 	}
 
-	tempFile, err := downloadBinary(downloadURL, assetName, checksums, filepath.Dir(execPath))
+	tempFile, err := downloadBinary(downloadURL, assetName, checksums, filepath.Dir(execPath), client)
 	if err != nil {
 		return fmt.Errorf("failed to download binary: %w", err)
 	}
@@ -176,7 +168,7 @@ func performUpdate(release *GitHubRelease, version string) error {
 	}()
 
 	backupPath := execPath + ".backup"
-	if err := copyFile(execPath, backupPath); err != nil {
+	if err := util.CopyFile(execPath, backupPath); err != nil {
 		return fmt.Errorf("failed to create backup: %w", err)
 	}
 	removeBackup := runtime.GOOS != "windows"
@@ -227,7 +219,7 @@ func platformAssetName(goos, goarch string) string {
 	return ""
 }
 
-func getChecksums(release *GitHubRelease) (map[string]string, error) {
+func getChecksums(release *GitHubRelease, client *http.Client) (map[string]string, error) {
 	var checksumsURL string
 	for _, asset := range release.Assets {
 		if asset.Name == "checksums.txt" {
@@ -240,7 +232,7 @@ func getChecksums(release *GitHubRelease) (map[string]string, error) {
 		return nil, fmt.Errorf("checksums.txt not found in release assets")
 	}
 
-	resp, err := httpClient.Get(checksumsURL)
+	resp, err := client.Get(checksumsURL)
 	if err != nil {
 		return nil, fmt.Errorf("failed to download checksums: %w", err)
 	}
@@ -276,18 +268,17 @@ func parseChecksumLine(line string) (string, string, bool) {
 	if len(parts) < 2 {
 		return "", "", false
 	}
-
 	return parts[0], strings.TrimPrefix(parts[1], "*"), true
 }
 
-func downloadBinary(url, filename string, checksums map[string]string, tempDir string) (string, error) {
+func downloadBinary(url, filename string, checksums map[string]string, tempDir string, client *http.Client) (string, error) {
 	tempFile, err := os.CreateTemp(tempDir, "motd-update-*.tmp")
 	if err != nil {
 		return "", fmt.Errorf("failed to create temp file: %w", err)
 	}
 	defer tempFile.Close()
 
-	resp, err := httpClient.Get(url)
+	resp, err := client.Get(url)
 	if err != nil {
 		return "", fmt.Errorf("failed to download binary: %w", err)
 	}
@@ -345,7 +336,7 @@ del "%s"
 			return fmt.Errorf("failed to start update script: %w", err)
 		}
 
-		fmt.Printf("%sUpdate scheduled. The binary will be replaced when this process exits.%s\n", YELLOW, RESET)
+		fmt.Printf("%sUpdate scheduled. The binary will be replaced when this process exits.%s\n", "\033[0;33m", "\033[0m")
 		return nil
 	}
 
@@ -362,7 +353,7 @@ func windowsBatchPath(filePath string) string {
 
 func restoreBackup(backupPath, execPath string) error {
 	if runtime.GOOS == "windows" {
-		return copyFile(backupPath, execPath)
+		return util.CopyFile(backupPath, execPath)
 	}
 
 	if err := os.Rename(backupPath, execPath); err != nil {

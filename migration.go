@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
+
+	"motd/config"
+	"motd/display"
 )
 
 var errNoLegacyConfig = errors.New("no legacy YAML config files found")
@@ -30,74 +32,73 @@ func runConfigMigration(configPath string) error {
 
 func printConfigMigrationError(err error) {
 	if errors.Is(err, errNoLegacyConfig) {
-		fmt.Printf("%sError: No legacy YAML config found to migrate.%s\n", RED, RESET)
+		fmt.Printf("%sError: No legacy YAML config found to migrate.%s\n", display.Red, display.Reset)
 		fmt.Println("Expected config.yml or config.yaml next to the target JSON config path.")
 		return
 	}
 
-	fmt.Printf("%sError migrating configuration: %v%s\n", RED, err, RESET)
+	fmt.Printf("%sError migrating configuration: %v%s\n", display.Red, err, display.Reset)
 }
 
 func migrateLegacyConfig(configPath string) (string, string, []string, error) {
-	jsonPaths := getConfigPaths()
-	legacyPaths := getLegacyConfigPaths()
+	jsonPaths := config.GetConfigPaths()
+	legacyPaths := config.GetLegacyConfigPaths()
 	if strings.TrimSpace(configPath) != "" {
 		jsonPaths = []string{configPath}
-		legacyPaths = getExplicitLegacyConfigPaths(configPath)
+		legacyPaths = config.GetExplicitLegacyConfigPaths(configPath)
 	}
 
 	return migrateLegacyConfigFromPaths(jsonPaths, legacyPaths)
 }
 
 func migrateLegacyConfigFromPaths(jsonPaths, legacyPaths []string) (string, string, []string, error) {
-	legacyErr := detectLegacyYAMLConfigFromPaths(legacyPaths, jsonPaths)
-	if legacyErr == nil {
-		return "", "", nil, errNoLegacyConfig
-	}
-	if legacyErr.requiredPath == "" {
-		return "", "", nil, fmt.Errorf("could not determine JSON target path for %s", legacyErr.legacyPath)
-	}
+	var data []byte
+	var legacyPath string
 
-	legacyPath := legacyErr.legacyPath
-	jsonPath := legacyErr.requiredPath
-	if filepath.Clean(legacyPath) == filepath.Clean(jsonPath) {
-		return legacyPath, jsonPath, nil, fmt.Errorf("migration target must be a JSON path, not the legacy YAML path: %s", jsonPath)
-	}
-
-	info, err := os.Stat(legacyPath)
-	if err != nil {
-		return legacyPath, jsonPath, nil, fmt.Errorf("failed to stat legacy config %s: %w", legacyPath, err)
-	}
-	if info.IsDir() {
-		return legacyPath, jsonPath, nil, fmt.Errorf("legacy config path is a directory: %s", legacyPath)
-	}
-
-	if info, err := os.Stat(jsonPath); err == nil {
-		if info.IsDir() {
-			return legacyPath, jsonPath, nil, fmt.Errorf("JSON config target is a directory: %s", jsonPath)
+	for _, lp := range legacyPaths {
+		if d, err := os.ReadFile(lp); err == nil {
+			data = d
+			legacyPath = lp
+			break
 		}
-		return legacyPath, jsonPath, nil, fmt.Errorf("JSON config already exists at %s", jsonPath)
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return legacyPath, jsonPath, nil, fmt.Errorf("failed to stat JSON config target %s: %w", jsonPath, err)
 	}
 
-	data, err := os.ReadFile(legacyPath)
-	if err != nil {
-		return legacyPath, jsonPath, nil, fmt.Errorf("failed to read legacy config %s: %w", legacyPath, err)
+	if data == nil {
+		return "", "", nil, errNoLegacyConfig
 	}
 
 	parsedConfig, unsupportedServices, err := parseLegacyYAMLConfig(data)
 	if err != nil {
-		return legacyPath, jsonPath, unsupportedServices, fmt.Errorf("failed to parse legacy YAML config %s: %w", legacyPath, err)
+		return "", "", nil, fmt.Errorf("failed to parse legacy config: %w", err)
+	}
+
+	jsonPath := legacyPath
+	if strings.HasSuffix(legacyPath, ".yml") || strings.HasSuffix(legacyPath, ".yaml") {
+		dir := filepath.Dir(legacyPath)
+		name := filepath.Base(legacyPath)
+		ext := filepath.Ext(name)
+		name = strings.TrimSuffix(name, ext)
+
+		jsonPath = filepath.Join(dir, name+".json")
+	}
+
+	if len(jsonPaths) > 0 &&
+		filepath.Dir(jsonPaths[0]) == filepath.Dir(legacyPath) {
+		jsonPath = jsonPaths[0]
+	}
+
+	if _, err := os.Stat(jsonPath); err == nil {
+		return "", "", nil, fmt.Errorf("target JSON config already exists: %s", jsonPath)
 	}
 
 	jsonData, err := json.MarshalIndent(parsedConfig, "", "  ")
 	if err != nil {
-		return legacyPath, jsonPath, unsupportedServices, fmt.Errorf("failed to encode migrated JSON config: %w", err)
+		return "", "", nil, fmt.Errorf("failed to marshal JSON: %w", err)
 	}
+
 	jsonData = append(jsonData, '\n')
 
-	if _, err := decodeJSONConfig(jsonData); err != nil {
+	if _, err := config.DecodeJSONConfig(jsonData); err != nil {
 		return legacyPath, jsonPath, unsupportedServices, fmt.Errorf("generated JSON config is invalid: %w", err)
 	}
 
@@ -111,7 +112,7 @@ func migrateLegacyConfigFromPaths(jsonPaths, legacyPaths []string) (string, stri
 	return legacyPath, jsonPath, unsupportedServices, nil
 }
 
-func parseLegacyYAMLConfig(data []byte) (Config, []string, error) {
+func parseLegacyYAMLConfig(data []byte) (config.Config, []string, error) {
 	parsedConfig := newMigratedConfig()
 	section := ""
 	currentService := ""
@@ -130,157 +131,153 @@ func parseLegacyYAMLConfig(data []byte) (Config, []string, error) {
 		if strings.TrimSpace(line) == "" {
 			continue
 		}
-		if strings.TrimSpace(line) == "---" || strings.TrimSpace(line) == "..." {
-			continue
-		}
 
 		indent := countLeadingSpaces(line)
-		if indent%2 != 0 {
-			return parsedConfig, unsupportedServices, fmt.Errorf("line %d: indentation must use multiples of two spaces", lineNumber+1)
-		}
 
-		content := strings.TrimSpace(line)
-		switch indent {
-		case 0:
-			key, value, ok := splitLegacyYAMLKeyValue(content)
-			if !ok || value != "" {
-				return parsedConfig, unsupportedServices, fmt.Errorf("line %d: expected top-level section", lineNumber+1)
-			}
-			if key != "services" && key != "system" {
-				return parsedConfig, unsupportedServices, fmt.Errorf("line %d: unsupported top-level key %q", lineNumber+1, key)
-			}
-			section = key
+		if indent == 0 {
+			section = ""
 			currentService = ""
 			currentServiceIndex = -1
 
-		case 2:
-			switch section {
-			case "services":
-				key, value, ok := splitLegacyYAMLKeyValue(content)
-				if !ok {
-					return parsedConfig, unsupportedServices, fmt.Errorf("line %d: expected service key", lineNumber+1)
-				}
-				if value != "" && value != "[]" {
-					return parsedConfig, unsupportedServices, fmt.Errorf("line %d: unsupported service value for %q", lineNumber+1, key)
-				}
-				if key == "organizr" {
-					unsupportedServices = appendUniqueString(unsupportedServices, key)
-					currentService = key
-					currentServiceIndex = -1
+			trimmed := strings.TrimSpace(line)
+			key, _, hasValue := splitLegacyYAMLKeyValue(trimmed)
+			if key != "" && !hasValue {
+				if key == "services" || key == "system" || strings.EqualFold(key, "Organizr") {
+					section = key
 					continue
 				}
-				if legacyServiceSlice(&parsedConfig, key) == nil {
-					return parsedConfig, unsupportedServices, fmt.Errorf("line %d: unsupported service %q", lineNumber+1, key)
-				}
-				currentService = key
-				currentServiceIndex = -1
+			}
+		}
 
-			case "system":
-				key, value, ok := splitLegacyYAMLKeyValue(content)
-				if !ok {
-					return parsedConfig, unsupportedServices, fmt.Errorf("line %d: expected system key", lineNumber+1)
+		if section == "services" || strings.EqualFold(section, "Organizr") {
+			currentService, currentServiceIndex, err = processServiceLine(
+				&parsedConfig, &unsupportedServices, section,
+				line, indent, currentService, currentServiceIndex,
+			)
+			if err != nil {
+				return parsedConfig, unsupportedServices, err
+			}
+			continue
+		}
+
+		if section == "system" {
+			if indent == 2 {
+				trimmed := strings.TrimSpace(line)
+				key, value, hasValue := splitLegacyYAMLKeyValue(trimmed)
+				if !hasValue {
+					continue
 				}
-				switch key {
-				case "compose_dir":
-					parsedConfig.System.ComposeDir, err = parseLegacyYAMLString(value)
-				case "tank_mount":
-					parsedConfig.System.TankMount, err = parseLegacyYAMLString(value)
-				case "network":
-					if value != "" && value != "{}" {
-						err = fmt.Errorf("unsupported network value %q", value)
+				if err := setSystemConfigField(&parsedConfig, key, value); err != nil {
+					return parsedConfig, unsupportedServices, err
+				}
+			}
+			if indent == 4 {
+				trimmed := strings.TrimSpace(line)
+				key, value, hasValue := splitLegacyYAMLKeyValue(trimmed)
+				if !hasValue {
+					continue
+				}
+				// Nested system keys like network.interface
+				if key == "interface" {
+					interfaceName, err := parseLegacyYAMLString(value)
+					if err != nil {
+						return parsedConfig, unsupportedServices, err
 					}
-				default:
-					err = fmt.Errorf("unsupported system key %q", key)
+					parsedConfig.System.Network.Interface = interfaceName
 				}
-				if err != nil {
-					return parsedConfig, unsupportedServices, fmt.Errorf("line %d: %w", lineNumber+1, err)
-				}
-
-			default:
-				return parsedConfig, unsupportedServices, fmt.Errorf("line %d: content outside services or system section", lineNumber+1)
 			}
-
-		case 4:
-			switch section {
-			case "services":
-				if !strings.HasPrefix(content, "-") {
-					return parsedConfig, unsupportedServices, fmt.Errorf("line %d: expected service list item", lineNumber+1)
-				}
-				if currentService == "" {
-					return parsedConfig, unsupportedServices, fmt.Errorf("line %d: service list item outside service section", lineNumber+1)
-				}
-				if currentService == "organizr" {
-					continue
-				}
-
-				itemContent := strings.TrimSpace(strings.TrimPrefix(content, "-"))
-				currentServiceIndex = appendLegacyService(&parsedConfig, currentService)
-				if itemContent == "" {
-					continue
-				}
-
-				key, value, ok := splitLegacyYAMLKeyValue(itemContent)
-				if !ok {
-					return parsedConfig, unsupportedServices, fmt.Errorf("line %d: expected service field", lineNumber+1)
-				}
-				if err := setLegacyServiceField(&parsedConfig, currentService, currentServiceIndex, key, value); err != nil {
-					return parsedConfig, unsupportedServices, fmt.Errorf("line %d: %w", lineNumber+1, err)
-				}
-
-			case "system":
-				key, value, ok := splitLegacyYAMLKeyValue(content)
-				if !ok || key != "interface" {
-					return parsedConfig, unsupportedServices, fmt.Errorf("line %d: expected network interface", lineNumber+1)
-				}
-				interfaceName, err := parseLegacyYAMLString(value)
-				if err != nil {
-					return parsedConfig, unsupportedServices, fmt.Errorf("line %d: %w", lineNumber+1, err)
-				}
-				parsedConfig.System.Network.Interface = interfaceName
-
-			default:
-				return parsedConfig, unsupportedServices, fmt.Errorf("line %d: content outside services or system section", lineNumber+1)
-			}
-
-		case 6:
-			if section != "services" {
-				return parsedConfig, unsupportedServices, fmt.Errorf("line %d: unsupported nested value", lineNumber+1)
-			}
-			if currentService == "organizr" {
-				continue
-			}
-			if currentService == "" || currentServiceIndex < 0 {
-				return parsedConfig, unsupportedServices, fmt.Errorf("line %d: service field outside list item", lineNumber+1)
-			}
-
-			key, value, ok := splitLegacyYAMLKeyValue(content)
-			if !ok {
-				return parsedConfig, unsupportedServices, fmt.Errorf("line %d: expected service field", lineNumber+1)
-			}
-			if err := setLegacyServiceField(&parsedConfig, currentService, currentServiceIndex, key, value); err != nil {
-				return parsedConfig, unsupportedServices, fmt.Errorf("line %d: %w", lineNumber+1, err)
-			}
-
-		default:
-			return parsedConfig, unsupportedServices, fmt.Errorf("line %d: unsupported indentation level", lineNumber+1)
 		}
 	}
 
 	return parsedConfig, unsupportedServices, nil
 }
 
-func newMigratedConfig() Config {
-	var parsedConfig Config
-	parsedConfig.Services.Plex = []ServiceConfig{}
-	parsedConfig.Services.Jellyfin = []ServiceConfig{}
-	parsedConfig.Services.Sonarr = []ServiceConfig{}
-	parsedConfig.Services.Radarr = []ServiceConfig{}
-	parsedConfig.Services.Seerr = []ServiceConfig{}
-	return parsedConfig
+func processServiceLine(parsedConfig *config.Config, unsupportedServices *[]string, section, line string, indent int, currentService string, currentServiceIndex int) (string, int, error) {
+	trimmed := strings.TrimSpace(line)
+
+	switch indent {
+	case 2:
+		key, value, hasValue := splitLegacyYAMLKeyValue(trimmed)
+
+		// Check for organizr (even with [] shorthand value)
+		if strings.EqualFold(key, "Organizr") {
+			*unsupportedServices = appendUniqueString(*unsupportedServices, "organizr")
+			return "", -1, nil
+		}
+
+		if value == "[]" || value == "{}" {
+			return "", -1, nil
+		}
+
+		if !hasValue {
+			// Start of a service type block
+			inService := isValidLegacyService(key)
+			if !inService {
+				return currentService, currentServiceIndex, nil
+			}
+			currentService = key
+			currentServiceIndex = -1
+		}
+		return currentService, currentServiceIndex, nil
+
+	case 4:
+		if strings.HasPrefix(trimmed, "- ") {
+			if currentService == "" {
+				return currentService, currentServiceIndex, nil
+			}
+			currentServiceIndex = appendLegacyService(parsedConfig, currentService)
+			return currentService, currentServiceIndex, nil
+		}
+
+		// Current service field — requires a list item
+		if currentService == "" || currentServiceIndex < 0 {
+			return currentService, currentServiceIndex, fmt.Errorf("service %q has no list item", currentService)
+		}
+
+		if err := setLegacyServiceField(parsedConfig, currentService, currentServiceIndex, trimmed, line); err != nil {
+			return currentService, currentServiceIndex, err
+		}
+		return currentService, currentServiceIndex, nil
+
+	default:
+		if indent > 4 {
+			if currentService == "" || currentServiceIndex < 0 {
+				return currentService, currentServiceIndex, nil
+			}
+			if err := setLegacyServiceField(parsedConfig, currentService, currentServiceIndex, trimmed, line); err != nil {
+				return currentService, currentServiceIndex, err
+			}
+		}
+		return currentService, currentServiceIndex, nil
+	}
 }
 
-func legacyServiceSlice(parsedConfig *Config, service string) *[]ServiceConfig {
-	switch service {
+func isValidLegacyService(key string) bool {
+	switch strings.ToLower(key) {
+	case "plex", "jellyfin", "sonarr", "radarr", "seerr":
+		return true
+	}
+	return false
+}
+
+func setSystemConfigField(parsedConfig *config.Config, key, value string) error {
+	switch key {
+	case "compose_dir":
+		parsedConfig.System.ComposeDir = strings.Trim(value, "\"'")
+	case "tank_mount":
+		parsedConfig.System.TankMount = strings.Trim(value, "\"'")
+	default:
+		parsedConfig.System.Network.Interface = strings.Trim(value, "\"'")
+	}
+	return nil
+}
+
+func newMigratedConfig() config.Config {
+	return config.Config{}
+}
+
+func legacyServiceSlice(parsedConfig *config.Config, service string) *[]config.ServiceConfig {
+	switch strings.ToLower(service) {
 	case "plex":
 		return &parsedConfig.Services.Plex
 	case "jellyfin":
@@ -296,13 +293,23 @@ func legacyServiceSlice(parsedConfig *Config, service string) *[]ServiceConfig {
 	}
 }
 
-func appendLegacyService(parsedConfig *Config, service string) int {
-	services := legacyServiceSlice(parsedConfig, service)
-	*services = append(*services, ServiceConfig{})
-	return len(*services) - 1
+func appendLegacyService(parsedConfig *config.Config, service string) int {
+	slice := legacyServiceSlice(parsedConfig, service)
+	if slice == nil {
+		return 0
+	}
+	*slice = append(*slice, config.ServiceConfig{})
+	return len(*slice) - 1
 }
 
-func setLegacyServiceField(parsedConfig *Config, service string, index int, key, value string) error {
+func setLegacyServiceField(parsedConfig *config.Config, service string, index int, trimmed, line string) error {
+	colonIdx := strings.Index(trimmed, ":")
+	if colonIdx < 0 {
+		return nil
+	}
+	key := strings.TrimSpace(trimmed[:colonIdx])
+	rawValue := strings.TrimSpace(trimmed[colonIdx+1:])
+
 	services := legacyServiceSlice(parsedConfig, service)
 	if services == nil || index < 0 || index >= len(*services) {
 		return fmt.Errorf("service field outside list item")
@@ -311,31 +318,37 @@ func setLegacyServiceField(parsedConfig *Config, service string, index int, key,
 	serviceConfig := &(*services)[index]
 	switch key {
 	case "name":
-		parsedValue, err := parseLegacyYAMLString(value)
+		parsedValue, err := parseLegacyYAMLString(rawValue)
 		if err != nil {
 			return err
 		}
 		serviceConfig.Name = parsedValue
 	case "url":
-		parsedValue, err := parseLegacyYAMLString(value)
+		parsedValue, err := parseLegacyYAMLString(rawValue)
 		if err != nil {
 			return err
 		}
 		serviceConfig.URL = parsedValue
 	case "api_key":
-		parsedValue, err := parseLegacyYAMLString(value)
+		parsedValue, err := parseLegacyYAMLString(rawValue)
+		if err != nil {
+			return err
+		}
+		serviceConfig.APIKey = parsedValue
+	case "apikey":
+		parsedValue, err := parseLegacyYAMLString(rawValue)
 		if err != nil {
 			return err
 		}
 		serviceConfig.APIKey = parsedValue
 	case "token":
-		parsedValue, err := parseLegacyYAMLString(value)
+		parsedValue, err := parseLegacyYAMLString(rawValue)
 		if err != nil {
 			return err
 		}
 		serviceConfig.Token = parsedValue
 	case "enabled":
-		parsedValue, err := parseLegacyYAMLBool(value)
+		parsedValue, err := parseLegacyYAMLBool(rawValue)
 		if err != nil {
 			return err
 		}
@@ -348,131 +361,67 @@ func setLegacyServiceField(parsedConfig *Config, service string, index int, key,
 }
 
 func stripLegacyYAMLComment(line string) string {
-	inSingleQuote := false
-	inDoubleQuote := false
-	escaped := false
-
-	for i := 0; i < len(line); i++ {
-		current := line[i]
-		if escaped {
-			escaped = false
-			continue
-		}
-		if inDoubleQuote && current == '\\' {
-			escaped = true
-			continue
-		}
-
-		switch current {
-		case '\'':
-			if !inDoubleQuote {
-				inSingleQuote = !inSingleQuote
-			}
-		case '"':
-			if !inSingleQuote {
-				inDoubleQuote = !inDoubleQuote
-			}
-		case '#':
-			if !inSingleQuote && !inDoubleQuote && (i == 0 || line[i-1] == ' ') {
-				return strings.TrimRight(line[:i], " ")
-			}
-		}
+	if idx := strings.Index(line, "#"); idx >= 0 {
+		line = line[:idx]
 	}
-
-	return strings.TrimRight(line, " ")
+	return line
 }
 
 func splitLegacyYAMLKeyValue(content string) (string, string, bool) {
-	inSingleQuote := false
-	inDoubleQuote := false
-	escaped := false
-
-	for i := 0; i < len(content); i++ {
-		current := content[i]
-		if escaped {
-			escaped = false
-			continue
-		}
-		if inDoubleQuote && current == '\\' {
-			escaped = true
-			continue
-		}
-
-		switch current {
-		case '\'':
-			if !inDoubleQuote {
-				inSingleQuote = !inSingleQuote
-			}
-		case '"':
-			if !inSingleQuote {
-				inDoubleQuote = !inDoubleQuote
-			}
-		case ':':
-			if !inSingleQuote && !inDoubleQuote {
-				return strings.TrimSpace(content[:i]), strings.TrimSpace(content[i+1:]), true
-			}
-		}
+	trimmed := strings.TrimSpace(content)
+	if trimmed == "" {
+		return "", "", false
+	}
+	colonIdx := strings.Index(trimmed, ":")
+	if colonIdx < 0 {
+		return trimmed, "", false
 	}
 
-	return "", "", false
+	key := strings.TrimSpace(trimmed[:colonIdx])
+	value := strings.TrimSpace(trimmed[colonIdx+1:])
+
+	return key, value, len(value) > 0
 }
 
 func parseLegacyYAMLString(value string) (string, error) {
 	value = strings.TrimSpace(value)
-	if value == "" || value == "null" || value == "~" {
-		return "", nil
+	if value == "" {
+		return "", fmt.Errorf("empty string")
 	}
-
-	if strings.HasPrefix(value, "\"") {
-		parsedValue, err := strconv.Unquote(value)
-		if err != nil {
-			return "", fmt.Errorf("invalid quoted string %q", value)
-		}
-		return parsedValue, nil
-	}
-
-	if strings.HasPrefix(value, "'") {
-		if !strings.HasSuffix(value, "'") || len(value) == 1 {
-			return "", fmt.Errorf("invalid quoted string %q", value)
-		}
-		return strings.ReplaceAll(value[1:len(value)-1], "''", "'"), nil
-	}
-
+	// Strip surrounding quotes
+	value = strings.Trim(value, "\"'")
 	return value, nil
 }
 
 func parseLegacyYAMLBool(value string) (bool, error) {
-	parsedValue, err := parseLegacyYAMLString(value)
-	if err != nil {
-		return false, err
-	}
-
-	switch strings.ToLower(parsedValue) {
-	case "true", "yes", "on":
+	value = strings.TrimSpace(strings.ToLower(value))
+	switch value {
+	case "true", "yes", "1", "on":
 		return true, nil
-	case "false", "no", "off":
+	case "false", "no", "0", "off":
 		return false, nil
 	default:
-		return false, fmt.Errorf("invalid boolean %q", value)
+		return false, fmt.Errorf("invalid boolean value: %s", value)
 	}
 }
 
 func countLeadingSpaces(value string) int {
-	for i := 0; i < len(value); i++ {
-		if value[i] != ' ' {
-			return i
+	count := 0
+	for _, ch := range value {
+		if ch == ' ' {
+			count++
+		} else {
+			break
 		}
 	}
-
-	return len(value)
+	return count
 }
 
 func appendUniqueString(values []string, value string) []string {
-	for _, existing := range values {
-		if existing == value {
+	for _, v := range values {
+		if v == value {
 			return values
 		}
 	}
-
 	return append(values, value)
 }

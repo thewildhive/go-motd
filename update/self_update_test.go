@@ -1,4 +1,4 @@
-package main
+package update
 
 import (
 	"crypto/sha256"
@@ -23,8 +23,8 @@ func TestCompareVersions(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		if got := compareVersions(tt.current, tt.latest); got != tt.expect {
-			t.Fatalf("compareVersions(%s,%s)=%d want %d", tt.current, tt.latest, got, tt.expect)
+		if got := CompareVersions(tt.current, tt.latest); got != tt.expect {
+			t.Fatalf("CompareVersions(%s,%s)=%d want %d", tt.current, tt.latest, got, tt.expect)
 		}
 	}
 }
@@ -47,12 +47,9 @@ func TestDownloadBinaryUsesRequestedTempDirAndChecksum(t *testing.T) {
 	}))
 	defer server.Close()
 
-	originalClient := httpClient
-	t.Cleanup(func() { httpClient = originalClient })
-	httpClient = server.Client()
-
+	client := server.Client()
 	tempDir := t.TempDir()
-	path, err := downloadBinary(server.URL, "motd-linux-amd64", map[string]string{"motd-linux-amd64": checksum}, tempDir)
+	path, err := downloadBinary(server.URL, "motd-linux-amd64", map[string]string{"motd-linux-amd64": checksum}, tempDir, client)
 	if err != nil {
 		t.Fatalf("downloadBinary failed: %v", err)
 	}
@@ -76,11 +73,8 @@ func TestDownloadBinaryRejectsChecksumMismatch(t *testing.T) {
 	}))
 	defer server.Close()
 
-	originalClient := httpClient
-	t.Cleanup(func() { httpClient = originalClient })
-	httpClient = server.Client()
-
-	_, err := downloadBinary(server.URL, "motd-linux-amd64", map[string]string{"motd-linux-amd64": "bad"}, t.TempDir())
+	client := server.Client()
+	_, err := downloadBinary(server.URL, "motd-linux-amd64", map[string]string{"motd-linux-amd64": "bad"}, t.TempDir(), client)
 	if err == nil || !strings.Contains(err.Error(), "checksum verification failed") {
 		t.Fatalf("expected checksum mismatch error, got %v", err)
 	}

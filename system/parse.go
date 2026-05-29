@@ -1,4 +1,4 @@
-package main
+package system
 
 import (
 	"encoding/json"
@@ -15,9 +15,9 @@ type windowsOSInfo struct {
 }
 
 type windowsDiskInfo struct {
-	Name      string
-	SizeBytes uint64
-	FreeBytes uint64
+	Drive      string
+	TotalBytes uint64
+	UsedBytes  uint64
 }
 
 type vnstatMonthlyEntry struct {
@@ -41,33 +41,26 @@ type vnstatData struct {
 }
 
 func parseWindowsOSPowerShell(output []byte) (windowsOSInfo, bool) {
-	line := firstNonEmptyLine(output)
-	if line == "" {
-		return windowsOSInfo{}, false
-	}
-
-	parts := strings.Split(line, "|")
-	if len(parts) != 3 {
+	text := strings.TrimSpace(string(output))
+	parts := strings.Split(text, "|")
+	if len(parts) < 3 {
 		return windowsOSInfo{}, false
 	}
 
 	caption := strings.TrimSpace(parts[0])
 	buildNumber := strings.TrimSpace(parts[1])
 	build := strings.TrimSpace(parts[2])
-	if caption == "" && build == "" {
-		return windowsOSInfo{}, false
-	}
 
 	return windowsOSInfoFromCaption(caption, buildNumber, build), true
 }
 
 func parseWindowsOSWMIC(output []byte) (windowsOSInfo, bool) {
 	caption, captionOK := parseWMICValue(output, "Caption")
-	buildNumber, buildOK := parseWMICValue(output, "BuildNumber")
-	if !captionOK && !buildOK {
+	if !captionOK {
 		return windowsOSInfo{}, false
 	}
 
+	buildNumber, _ := parseWMICValue(output, "BuildNumber")
 	return windowsOSInfoFromCaption(caption, buildNumber, buildNumber), true
 }
 
@@ -75,28 +68,27 @@ func windowsOSInfoFromCaption(caption, buildNumber, build string) windowsOSInfo 
 	return windowsOSInfo{
 		Version: inferWindowsVersion(caption, buildNumber),
 		Edition: parseWindowsEdition(caption),
-		Build:   strings.TrimSpace(build),
+		Build:   build,
 	}
 }
 
 func inferWindowsVersion(caption, buildNumber string) string {
-	build, err := strconv.Atoi(strings.TrimSpace(buildNumber))
-	if err == nil && build >= 22000 {
-		return "11"
+	if buildNumber == "" {
+		return ""
+	}
+	bn, err := strconv.Atoi(buildNumber)
+	if err != nil {
+		return ""
 	}
 
-	normalized := strings.ToLower(caption)
-	if strings.Contains(normalized, "windows 11") {
+	switch {
+	case bn >= 22000:
 		return "11"
-	}
-	if strings.Contains(normalized, "windows 10") {
+	case bn >= 10240:
 		return "10"
+	default:
+		return ""
 	}
-	if err == nil && build >= 10240 {
-		return "10"
-	}
-
-	return ""
 }
 
 func parseWindowsEdition(caption string) string {
@@ -125,16 +117,15 @@ func parseWindowsEdition(caption string) string {
 
 func firstNonEmptyLine(output []byte) string {
 	for _, line := range strings.Split(string(output), "\n") {
-		line = strings.TrimSpace(line)
-		if line != "" {
-			return line
+		trimmed := strings.TrimSpace(line)
+		if trimmed != "" {
+			return trimmed
 		}
 	}
 	return ""
 }
 
 func valueOrUnknown(value string) string {
-	value = strings.TrimSpace(value)
 	if value == "" {
 		return "Unknown"
 	}
@@ -146,20 +137,19 @@ func pickLatestVnstatMonth(entries []vnstatMonthlyEntry, now time.Time) (vnstatM
 		return vnstatMonthlyEntry{}, false
 	}
 
+	currentYear, currentMonth := now.Year(), int(now.Month())
+
 	for _, entry := range entries {
-		if entry.Date.Year == now.Year() && entry.Date.Month == int(now.Month()) {
+		if entry.Date.Year == currentYear && entry.Date.Month == currentMonth {
 			return entry, true
 		}
 	}
 
-	latest := entries[0]
-	for _, entry := range entries[1:] {
-		if entry.Date.Year > latest.Date.Year || (entry.Date.Year == latest.Date.Year && entry.Date.Month > latest.Date.Month) {
-			latest = entry
-		}
+	if len(entries) >= 2 {
+		return entries[len(entries)-2], true
 	}
 
-	return latest, true
+	return entries[len(entries)-1], true
 }
 
 func pickVnstatInterface(data vnstatData, preferred string) (vnstatInterface, bool) {
@@ -167,16 +157,8 @@ func pickVnstatInterface(data vnstatData, preferred string) (vnstatInterface, bo
 		return vnstatInterface{}, false
 	}
 
-	if preferred != "" {
-		for _, iface := range data.Interfaces {
-			if iface.ID == preferred {
-				return iface, true
-			}
-		}
-	}
-
 	for _, iface := range data.Interfaces {
-		if len(iface.Traffic.Month) > 0 {
+		if iface.ID == preferred {
 			return iface, true
 		}
 	}
@@ -184,7 +166,7 @@ func pickVnstatInterface(data vnstatData, preferred string) (vnstatInterface, bo
 	return data.Interfaces[0], true
 }
 
-func parseVnstatMonthlyUsage(output []byte, preferredInterface string, now time.Time) (float64, float64, float64, float64, error) {
+func parseVnstatMonthlyUsage(output []byte, preferredInterface string, now time.Time) (rxGB, txGB, rxEst, txEst float64, err error) {
 	var parsed vnstatData
 	if err := json.Unmarshal(output, &parsed); err != nil {
 		return 0, 0, 0, 0, err
@@ -200,34 +182,35 @@ func parseVnstatMonthlyUsage(output []byte, preferredInterface string, now time.
 		return 0, 0, 0, 0, fmt.Errorf("no vnstat monthly entry available")
 	}
 
-	rxGB := float64(month.Rx) / 1073741824.0
-	txGB := float64(month.Tx) / 1073741824.0
+	rxGB = float64(month.Rx) / 1073741824.0
+	txGB = float64(month.Tx) / 1073741824.0
 
 	day := float64(now.Day())
 	if day < 1 {
 		day = 1
 	}
 
-	rxEst := rxGB * (30.0 / day)
-	txEst := txGB * (30.0 / day)
+	rxEst = rxGB * (30.0 / day)
+	txEst = txGB * (30.0 / day)
 
 	return rxGB, txGB, rxEst, txEst, nil
 }
 
 func countUniqueWhoUsers(output []byte) int {
-	users := make(map[string]struct{})
+	seen := make(map[string]bool)
 	for _, line := range strings.Split(string(output), "\n") {
 		fields := strings.Fields(line)
 		if len(fields) > 0 {
-			users[fields[0]] = struct{}{}
+			seen[fields[0]] = true
 		}
 	}
-	return len(users)
+	return len(seen)
 }
 
 func countNonEmptyLines(output []byte) int {
+	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
 	count := 0
-	for _, line := range strings.Split(string(output), "\n") {
+	for _, line := range lines {
 		if strings.TrimSpace(line) != "" {
 			count++
 		}
@@ -236,24 +219,18 @@ func countNonEmptyLines(output []byte) int {
 }
 
 func countWindowsTasklistProcesses(output []byte) int {
-	count := 0
-	for _, line := range strings.Split(string(output), "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "INFO:") {
-			continue
-		}
-		count++
-	}
-	return count
+	return countNonEmptyLines(output)
 }
 
 func parseWMICValue(output []byte, key string) (string, bool) {
-	prefix := strings.ToLower(key) + "="
+	prefix := key + "="
 	for _, line := range strings.Split(string(output), "\n") {
-		line = strings.TrimSpace(line)
-		if strings.HasPrefix(strings.ToLower(line), prefix) {
-			value := strings.TrimSpace(line[len(prefix):])
-			return value, value != ""
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, prefix) {
+			value := strings.TrimSpace(strings.TrimPrefix(trimmed, prefix))
+			if value != "" && value != key {
+				return value, true
+			}
 		}
 	}
 	return "", false
@@ -265,46 +242,27 @@ func parseWMICUint(output []byte, key string) (uint64, bool) {
 		return 0, false
 	}
 	parsed, err := strconv.ParseUint(value, 10, 64)
-	return parsed, err == nil
+	if err != nil {
+		return 0, false
+	}
+	return parsed, true
 }
 
 func parseWMICDateTime(value string) (time.Time, bool) {
+	// WMIC datetime format: YYYYMMDDHHMMSS.MMMMMM+OOO
+	value = strings.TrimSpace(value)
 	if len(value) < 14 {
 		return time.Time{}, false
 	}
 
-	year, errYear := strconv.Atoi(value[0:4])
-	month, errMonth := strconv.Atoi(value[4:6])
-	day, errDay := strconv.Atoi(value[6:8])
-	hour, errHour := strconv.Atoi(value[8:10])
-	minute, errMinute := strconv.Atoi(value[10:12])
-	second, errSecond := strconv.Atoi(value[12:14])
-	if errYear != nil || errMonth != nil || errDay != nil || errHour != nil || errMinute != nil || errSecond != nil {
-		return time.Time{}, false
-	}
+	year, _ := strconv.Atoi(value[0:4])
+	month, _ := strconv.Atoi(value[4:6])
+	day, _ := strconv.Atoi(value[6:8])
+	hour, _ := strconv.Atoi(value[8:10])
+	min, _ := strconv.Atoi(value[10:12])
+	sec, _ := strconv.Atoi(value[12:14])
 
-	return time.Date(year, time.Month(month), day, hour, minute, second, 0, time.Local), true
-}
-
-func formatDuration(duration time.Duration) string {
-	if duration < 0 {
-		duration = 0
-	}
-
-	days := int(duration.Hours()) / 24
-	hours := int(duration.Hours()) % 24
-	minutes := int(duration.Minutes()) % 60
-	parts := make([]string, 0, 3)
-	if days > 0 {
-		parts = append(parts, fmt.Sprintf("%d day%s", days, pluralSuffix(days)))
-	}
-	if hours > 0 {
-		parts = append(parts, fmt.Sprintf("%d hour%s", hours, pluralSuffix(hours)))
-	}
-	if minutes > 0 || len(parts) == 0 {
-		parts = append(parts, fmt.Sprintf("%d minute%s", minutes, pluralSuffix(minutes)))
-	}
-	return strings.Join(parts, ", ")
+	return time.Date(year, time.Month(month), day, hour, min, sec, 0, time.Local), true
 }
 
 func parseWindowsCPUPercent(output []byte) (int, bool) {
@@ -338,31 +296,40 @@ func parseWindowsMemoryKB(output []byte) (uint64, uint64, bool) {
 	if len(fields) != 2 {
 		return 0, 0, false
 	}
-	total, totalErr := strconv.ParseUint(strings.TrimSpace(fields[0]), 10, 64)
-	free, freeErr := strconv.ParseUint(strings.TrimSpace(fields[1]), 10, 64)
+	totalKB, totalErr := strconv.ParseUint(strings.TrimSpace(fields[0]), 10, 64)
+	freeKB, freeErr := strconv.ParseUint(strings.TrimSpace(fields[1]), 10, 64)
 	if totalErr != nil || freeErr != nil {
 		return 0, 0, false
 	}
-	return total, free, true
+	return totalKB, freeKB, true
 }
 
 func parseWindowsDiskCSV(output []byte) []windowsDiskInfo {
-	disks := make([]windowsDiskInfo, 0)
+	var disks []windowsDiskInfo
 	for _, line := range strings.Split(string(output), "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" {
 			continue
 		}
 		parts := strings.Split(line, ",")
-		if len(parts) != 3 {
+		if len(parts) < 3 {
 			continue
 		}
-		size, sizeErr := strconv.ParseUint(strings.TrimSpace(parts[1]), 10, 64)
-		free, freeErr := strconv.ParseUint(strings.TrimSpace(parts[2]), 10, 64)
-		if sizeErr != nil || freeErr != nil {
+		drive := strings.TrimSpace(parts[0])
+		totalStr := strings.TrimSpace(parts[1])
+		freeStr := strings.TrimSpace(parts[2])
+
+		totalBytes, totalErr := strconv.ParseUint(totalStr, 10, 64)
+		freeBytes, freeErr := strconv.ParseUint(freeStr, 10, 64)
+		if totalErr != nil || freeErr != nil || totalBytes == 0 {
 			continue
 		}
-		disks = append(disks, windowsDiskInfo{Name: strings.TrimSpace(parts[0]), SizeBytes: size, FreeBytes: free})
+
+		disks = append(disks, windowsDiskInfo{
+			Drive:      drive,
+			TotalBytes: totalBytes,
+			UsedBytes:  totalBytes - freeBytes,
+		})
 	}
 	return disks
 }
@@ -381,7 +348,11 @@ func parseWindowsDiskWMIC(output []byte) []windowsDiskInfo {
 		free, freeErr := strconv.ParseUint(freeValue, 10, 64)
 		size, sizeErr := strconv.ParseUint(sizeValue, 10, 64)
 		if freeErr == nil && sizeErr == nil {
-			disks = append(disks, windowsDiskInfo{Name: name, SizeBytes: size, FreeBytes: free})
+			disks = append(disks, windowsDiskInfo{
+				Drive:      name,
+				TotalBytes: size,
+				UsedBytes:  size - free,
+			})
 		}
 		current = make(map[string]string)
 	}
@@ -407,13 +378,38 @@ func parseWindowsDiskWMIC(output []byte) []windowsDiskInfo {
 }
 
 func parseWindowsTemperature(output []byte) (float64, bool) {
-	value := strings.TrimSpace(string(output))
-	if value == "" {
+	text := strings.TrimSpace(string(output))
+	if text == "" {
 		return 0, false
 	}
-	deciKelvin, err := strconv.ParseFloat(value, 64)
-	if err != nil || deciKelvin <= 0 {
-		return 0, false
+
+	// Try as direct value (deci-Kelvin from wmi)
+	// WMIC returns values like 3000 (30.00°C)
+	// Multiple values might be returned, find the first numeric one
+	for _, line := range strings.Split(text, "\n") {
+		line = strings.TrimSpace(line)
+		// Skip empty lines and headers
+		if line == "" || strings.Contains(line, "CurrentTemperature") {
+			continue
+		}
+		// Check for CurrentTemperature= format
+		if strings.HasPrefix(line, "CurrentTemperature=") {
+			line = strings.TrimSpace(strings.TrimPrefix(line, "CurrentTemperature="))
+		}
+		val, err := strconv.ParseFloat(line, 64)
+		if err != nil {
+			continue
+		}
+		if val <= 0 {
+			continue
+		}
+		// Convert from deci-Kelvin to Celsius
+		celsius := (val / 10.0) - 273.15
+		if celsius < 0 || celsius > 150 {
+			continue
+		}
+		return celsius, true
 	}
-	return deciKelvin/10.0 - 273.15, true
+
+	return 0, false
 }
