@@ -192,7 +192,7 @@ func TestShowMediaServicesStableOrder(t *testing.T) {
 		mu.Lock()
 		defer mu.Unlock()
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = fmt.Fprint(w, `{"totalRecords":5,"records":[{"id":1,"status":"released"},{"id":2,"status":"released"}]}`)
+		_, _ = fmt.Fprint(w, `{"totalRecords":5,"records":[{"id":1,"isAvailable":true},{"id":2,"isAvailable":true}]}`)
 	}))
 	defer radarrServer.Close()
 

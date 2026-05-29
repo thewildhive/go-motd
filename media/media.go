@@ -257,7 +257,7 @@ func countAvailableRecords(records []json.RawMessage) int {
 			count++
 			continue
 		}
-		if rec.IsAvailable || rec.Status == "released" || rec.Status == "inCinemas" {
+		if rec.IsAvailable {
 			count++
 		}
 	}
