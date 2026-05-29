@@ -71,6 +71,22 @@ func HandleSelfUpdate(version string, client *http.Client) {
 		}
 	}
 
+	execPath, err := os.Executable()
+	if err != nil {
+		fmt.Printf("%sError determining executable path: %v%s\n", "\033[0;31m", err, "\033[0m")
+		os.Exit(1)
+	}
+
+	// Check write access to the binary directory before downloading.
+	if err := checkWriteAccess(execPath); err != nil {
+		localBin := filepath.Join(os.Getenv("HOME"), ".local", "bin")
+		fmt.Printf("%sCannot write to %s%s\n", "\033[0;31m", filepath.Dir(execPath), "\033[0m")
+		fmt.Printf("Try running with sudo, or install to %s and add it to your PATH.\n", localBin)
+		fmt.Printf("  mkdir -p %s\n", localBin)
+		fmt.Printf("  cp %s %s/\n", execPath, localBin)
+		os.Exit(1)
+	}
+
 	fmt.Printf("\n%sUpdating to version %s...%s\n", "\033[0;36m", latestVersion, "\033[0m")
 
 	if err := performUpdate(release, latestVersion, client); err != nil {
@@ -399,6 +415,18 @@ func restoreBackup(backupPath, execPath string) error {
 		return err
 	}
 	return os.Chmod(execPath, 0755)
+}
+
+// checkWriteAccess verifies that the directory containing the binary is
+// writable by attempting to create and remove a temporary file.
+func checkWriteAccess(execPath string) error {
+	dir := filepath.Dir(execPath)
+	tmpFile, err := os.CreateTemp(dir, ".motd-write-test-*")
+	if err != nil {
+		return err
+	}
+	tmpFile.Close()
+	return os.Remove(tmpFile.Name())
 }
 
 const cacheFile = "motd-version-check"
