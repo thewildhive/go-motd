@@ -1,3 +1,7 @@
+## [v1.4.3] - 2026-05-29
+
+- fix: filter unavailable movies client-side in Radarr wanted list (8a8691b)
+
 ## [v1.4.2] - 2026-05-29
 
 - fix: exclude unavailable movies from Radarr missing count (c18706d)
