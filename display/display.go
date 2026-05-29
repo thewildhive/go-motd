@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"regexp"
 	"strings"
 )
 
@@ -34,11 +35,19 @@ func DotLabel(label string) {
 	fmt.Print(": ")
 }
 
+// safeHostnameChars matches hostnames that are safe to pass to external commands.
+// Allows letters, digits, dots, and hyphens — the POSIX-safe hostname subset.
+var safeHostnameRe = regexp.MustCompile(`^[a-zA-Z0-9.-]+$`)
+
 func PrintHeader() {
 	fmt.Println()
 
-	hostname, _ := os.Hostname()
-	if hasFiglet() && hasLolcat() {
+	hostname, err := os.Hostname()
+	if err != nil || hostname == "" {
+		hostname = "localhost"
+	}
+
+	if hasFiglet() && hasLolcat() && safeHostnameRe.MatchString(hostname) {
 		figlet := exec.Command("figlet", hostname)
 		lolcat := exec.Command("lolcat", "-f")
 		pipe, err := figlet.StdoutPipe()
