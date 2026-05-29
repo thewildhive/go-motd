@@ -1,6 +1,7 @@
 package display
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"os/exec"
@@ -47,20 +48,22 @@ func PrintHeader() {
 		hostname = "localhost"
 	}
 
-	if hasFiglet() && hasLolcat() && safeHostnameRe.MatchString(hostname) {
-		figlet := exec.Command("figlet", hostname)
-		lolcat := exec.Command("lolcat", "-f")
-		pipe, err := figlet.StdoutPipe()
-		if err == nil {
-			lolcat.Stdin = pipe
-			lolcat.Stdout = os.Stdout
-			if err := lolcat.Start(); err == nil {
-				if err := figlet.Run(); err == nil {
-					_ = lolcat.Wait()
-				}
+	if hasFiglet() && safeHostnameRe.MatchString(hostname) {
+		output, err := exec.Command("figlet", hostname).Output()
+		if err == nil && len(output) > 0 {
+			// Rainbow-color each line of figlet output natively (replaces lolcat)
+			rainbow := []string{"\033[0;31m", "\033[0;33m", "\033[0;32m", "\033[0;36m", "\033[0;34m", "\033[0;35m"}
+			lines := bytes.Split(bytes.TrimRight(output, "\n"), []byte("\n"))
+			for i, line := range lines {
+				color := rainbow[i%len(rainbow)]
+				fmt.Printf("%s%s%s\n", color, string(line), Reset)
 			}
+			fmt.Println()
+			return
 		}
-	} else {
+	}
+
+	{
 		label := "Connected to: "
 		contentLength := len(label) + len(hostname)
 
@@ -89,9 +92,6 @@ func hasFiglet() bool {
 	return hasCommand("figlet")
 }
 
-func hasLolcat() bool {
-	return hasCommand("lolcat")
-}
 
 func hasCommand(name string) bool {
 	_, err := exec.LookPath(name)

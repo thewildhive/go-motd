@@ -90,17 +90,18 @@ Seerr pending requests are read from:
 ## Optional Runtime Tools
 
 Optional commands used for richer output:
-- `figlet`, `lolcat`
-- `vnstat`
-- `sensors`
-- `docker`
+- `vnstat` — monthly bandwidth estimates (falls back gracefully if absent)
+- `docker` — container count
+- `who` — logged-in user count
+
+Most system information (memory, disk, uptime, CPU load, temperature, process count, network interface) is collected via `/proc` and `syscall` directly — no external tools required.
 
 Windows system information uses PowerShell/CIM where possible and falls back to built-in commands such as `wmic` and `tasklist`. CPU temperature and bandwidth may be unavailable on Windows depending on sensor/collector support.
 
 Linux install example:
 
 ```bash
-sudo apt install figlet lolcat vnstat lm-sensors docker.io
+sudo apt install vnstat docker.io
 ```
 
 ## Verify Installation

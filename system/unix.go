@@ -6,8 +6,10 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"motd/display"
@@ -29,22 +31,28 @@ func ShowOS(cfg ConfigAccessor, debug bool) {
 }
 
 func ShowUptime(cfg ConfigAccessor, debug bool) {
-	output, err := exec.Command("uptime", "-p").Output()
 	uptime := "unknown"
+	data, err := os.ReadFile("/proc/uptime")
 	if err == nil {
-		uptime = strings.TrimPrefix(strings.TrimSpace(string(output)), "up ")
+		fields := strings.Fields(string(data))
+		if len(fields) > 0 {
+			seconds, parseErr := strconv.ParseFloat(fields[0], 64)
+			if parseErr == nil {
+				uptime = FormatDuration(time.Duration(seconds) * time.Second)
+			}
+		}
 	}
 	display.DotLabel("Uptime")
 	fmt.Printf("%s%s%s\n", display.Blue, uptime, display.Reset)
 }
 
 func ShowLoad(cfg ConfigAccessor, debug bool) {
-	output, err := exec.Command("uptime").Output()
 	load := ""
+	data, err := os.ReadFile("/proc/loadavg")
 	if err == nil {
-		parts := strings.Split(string(output), "load average: ")
-		if len(parts) > 1 {
-			load = strings.TrimSpace(parts[1])
+		fields := strings.Fields(string(data))
+		if len(fields) >= 3 {
+			load = fmt.Sprintf("%s, %s, %s", fields[0], fields[1], fields[2])
 		}
 	}
 	display.DotLabel("CPU Load")
@@ -52,27 +60,36 @@ func ShowLoad(cfg ConfigAccessor, debug bool) {
 }
 
 func ShowMemory(cfg ConfigAccessor, debug bool) {
-	output, err := exec.Command("free", "-b").Output()
+	data, err := os.ReadFile("/proc/meminfo")
 	if err != nil {
 		return
 	}
 
-	lines := strings.Split(string(output), "\n")
-	for _, line := range lines {
-		if strings.HasPrefix(line, "Mem:") {
+	var totalKB, availKB uint64
+	for _, line := range strings.Split(string(data), "\n") {
+		if strings.HasPrefix(line, "MemTotal:") {
 			fields := strings.Fields(line)
-			if len(fields) >= 3 {
-				total, _ := strconv.ParseFloat(fields[1], 64)
-				used, _ := strconv.ParseFloat(fields[2], 64)
-				totalGB := total / float64(GB)
-				usedGB := used / float64(GB)
-
-				display.DotLabel("Memory")
-				fmt.Printf("%s%.2f GB / %.2f GB%s\n", display.Blue, usedGB, totalGB, display.Reset)
+			if len(fields) >= 2 {
+				totalKB, _ = strconv.ParseUint(fields[1], 10, 64)
 			}
-			break
+		}
+		if strings.HasPrefix(line, "MemAvailable:") {
+			fields := strings.Fields(line)
+			if len(fields) >= 2 {
+				availKB, _ = strconv.ParseUint(fields[1], 10, 64)
+			}
 		}
 	}
+
+	if totalKB == 0 {
+		return
+	}
+	usedKB := totalKB - availKB
+	totalGB := float64(totalKB) / 1048576.0
+	usedGB := float64(usedKB) / 1048576.0
+
+	display.DotLabel("Memory")
+	fmt.Printf("%s%.2f GB / %.2f GB%s\n", display.Blue, usedGB, totalGB, display.Reset)
 }
 
 func ShowBandwidth(cfg ConfigAccessor, debug bool) {
@@ -124,106 +141,112 @@ func ShowUser(cfg ConfigAccessor, debug bool) {
 }
 
 func ShowProcesses(cfg ConfigAccessor, debug bool) {
-	output, err := exec.Command("ps", "-e", "--no-headers").Output()
+	entries, err := os.ReadDir("/proc")
 	if err != nil {
 		return
 	}
 
-	count := countNonEmptyLines(output)
+	count := 0
+	for _, entry := range entries {
+		if entry.IsDir() {
+			if _, err := strconv.Atoi(entry.Name()); err == nil {
+				count++
+			}
+		}
+	}
+
 	display.DotLabel("Processes")
 	fmt.Printf("%s%d%s\n", display.Blue, count, display.Reset)
 }
 
 func ShowDisk(cfg ConfigAccessor, debug bool) {
-	ShowDFDisk("/", "Disk (/)")
+	showDiskNative("/", "Disk (/)")
 	if cfg.TankMount != "" {
-		ShowDFDisk(cfg.TankMount, fmt.Sprintf("Disk (%s)", cfg.TankMount))
+		showDiskNative(cfg.TankMount, fmt.Sprintf("Disk (%s)", cfg.TankMount))
 	}
 }
 
-var tempSensorLabels = []string{
-	"Package id 0:",    // Intel
-	"Tctl:",            // AMD
-	"Tdie:",            // AMD (Ryzen)
-	"CPU Temperature:", // ARM SoC, some AMD
-	"temp1:",           // Common fallback (w1_therm, coretemp, lm-sensors)
-	"CPUTIN:",          // Some Super I/O sensors
-}
-
-func ShowTemp(cfg ConfigAccessor, debug bool) {
-	if !hasCommand("sensors") {
+func showDiskNative(path, label string) {
+	var stat syscall.Statfs_t
+	if err := syscall.Statfs(path, &stat); err != nil {
 		return
 	}
 
-	output, err := exec.Command("sensors").Output()
+	totalBytes := stat.Blocks * uint64(stat.Bsize)
+	freeBytes := stat.Bavail * uint64(stat.Bsize)
+	usedBytes := totalBytes - freeBytes
+
+	totalGB := float64(totalBytes) / float64(GB)
+	usedGB := float64(usedBytes) / float64(GB)
+	pct := 0.0
+	if totalBytes > 0 {
+		pct = float64(usedBytes) / float64(totalBytes) * 100
+	}
+
+	display.DotLabel(label)
+	fmt.Printf("%s%.2f GB / %.2f GB (%.0f%% used)%s\n", display.Blue, usedGB, totalGB, pct, display.Reset)
+}
+
+var tempZonesChecked bool
+var tempZones []string
+
+func scanThermalZones() {
+	tempZonesChecked = true
+	entries, err := os.ReadDir("/sys/class/thermal")
 	if err != nil {
 		return
 	}
-
-	lines := strings.Split(string(output), "\n")
-	for _, label := range tempSensorLabels {
-		for _, line := range lines {
-			if strings.Contains(line, label) {
-				fields := strings.Fields(line)
-				if len(fields) >= 4 {
-					temp := fields[3]
-					display.DotLabel("CPU Temperature")
-					fmt.Printf("%s%s%s\n", display.Red, temp, display.Reset)
-					return
-				}
+	for _, entry := range entries {
+		name := entry.Name()
+		if strings.HasPrefix(name, "thermal_zone") {
+			zonePath := filepath.Join("/sys/class/thermal", name, "temp")
+			if _, err := os.Stat(zonePath); err == nil {
+				tempZones = append(tempZones, zonePath)
 			}
 		}
+	}
+}
+
+func ShowTemp(cfg ConfigAccessor, debug bool) {
+	if !tempZonesChecked {
+		scanThermalZones()
+	}
+	if len(tempZones) == 0 {
+		return
+	}
+
+	for _, zonePath := range tempZones {
+		data, err := os.ReadFile(zonePath)
+		if err != nil {
+			continue
+		}
+		millicelsius, err := strconv.ParseInt(strings.TrimSpace(string(data)), 10, 64)
+		if err != nil || millicelsius <= 0 {
+			continue
+		}
+		celsius := float64(millicelsius) / 1000.0
+		if celsius < 0 || celsius > 150 {
+			continue
+		}
+		display.DotLabel("CPU Temperature")
+		fmt.Printf("%s%.0f°C%s\n", display.Red, celsius, display.Reset)
+		return
 	}
 }
 
 func getDefaultInterface() string {
-	if output, err := exec.Command("ip", "route", "show", "default").Output(); err == nil {
-		lines := strings.Split(strings.TrimSpace(string(output)), "\n")
-		for _, line := range lines {
-			if strings.Contains(line, "default via") {
-				fields := strings.Fields(line)
-				for i, field := range fields {
-					if field == "dev" && i+1 < len(fields) {
-						return fields[i+1]
-					}
-				}
-			}
-		}
+	data, err := os.ReadFile("/proc/net/route")
+	if err != nil {
+		return ""
 	}
 
-	if output, err := exec.Command("route", "-n").Output(); err == nil {
-		lines := strings.Split(strings.TrimSpace(string(output)), "\n")
-		for _, line := range lines {
-			if strings.HasPrefix(line, "0.0.0.0") || strings.HasPrefix(line, "default") {
-				fields := strings.Fields(line)
-				if len(fields) >= 8 {
-					return fields[7]
-				}
-			}
-		}
-	}
-
-	commonInterfaces := []string{"eth0", "enp0s3", "ens33", "en0", "wlan0", "wlp2s0"}
-	for _, iface := range commonInterfaces {
-		if output, err := exec.Command("ip", "link", "show", iface).Output(); err == nil {
-			if strings.Contains(string(output), "state UP") {
-				return iface
-			}
-		}
-	}
-
-	if output, err := exec.Command("ip", "link", "show").Output(); err == nil {
-		lines := strings.Split(string(output), "\n")
-		for _, line := range lines {
-			if strings.Contains(line, "state UP") && !strings.Contains(line, "lo:") {
-				fields := strings.Fields(line)
-				if len(fields) >= 2 {
-					ifaceName := strings.TrimSuffix(fields[1], ":")
-					if ifaceName != "lo" {
-						return ifaceName
-					}
-				}
-			}
+	lines := strings.Split(string(data), "\n")
+	// Header: Iface   Destination  Gateway ...
+	// Default route has Destination=00000000
+	for _, line := range lines[1:] {
+		fields := strings.Fields(line)
+		if len(fields) >= 2 && fields[1] == "00000000" {
+			return fields[0]
 		}
 	}
 
