@@ -117,12 +117,25 @@ func configureServiceSlice(reader *bufio.Reader, cfg *config.Config, name string
 	for i := range *slice {
 		fmt.Printf("  Instance %d: %s %s\n", i+1, (*slice)[i].Name, (*slice)[i].URL)
 	}
-	if !promptBool(reader, fmt.Sprintf("Update %s", name), true) {
+
+	action := promptUpdateAction(reader, name)
+	switch action {
+	case "skip":
 		return
-	}
-	for i := range *slice {
-		fmt.Printf("  --- Instance %d ---\n", i+1)
-		configure(&(*slice)[i])
+	case "delete":
+		for i := len(*slice) - 1; i >= 0; i-- {
+			fmt.Printf("  Delete instance %d: %s %s? [y/N]: ", i+1, (*slice)[i].Name, (*slice)[i].URL)
+			input := readLine(reader)
+			if strings.ToLower(strings.TrimSpace(input)) == "y" {
+				*slice = append((*slice)[:i], (*slice)[i+1:]...)
+			}
+		}
+		return
+	default: // "update"
+		for i := range *slice {
+			fmt.Printf("  --- Instance %d ---\n", i+1)
+			configure(&(*slice)[i])
+		}
 	}
 }
 
@@ -148,6 +161,22 @@ func prompt(reader *bufio.Reader, label, currentVal, fallback string) string {
 		return displayVal
 	}
 	return input
+}
+
+// promptUpdateAction asks whether to update, skip, or delete a service.
+// Returns "update", "skip", or "delete".
+func promptUpdateAction(reader *bufio.Reader, name string) string {
+	fmt.Printf("Update/delete %s [Y/n/d]: ", name)
+	input := readLine(reader)
+	input = strings.ToLower(input)
+	switch input {
+	case "d", "del", "delete":
+		return "delete"
+	case "n", "no":
+		return "skip"
+	default:
+		return "update"
+	}
 }
 
 // promptBool asks a yes/no question.
