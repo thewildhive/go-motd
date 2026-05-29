@@ -83,8 +83,8 @@ func ShowMemory(cfg ConfigAccessor, debug bool) {
 		return
 	}
 
-	usedGB := float64(totalBytes-freeBytes) / 1073741824.0
-	totalGB := float64(totalBytes) / 1073741824.0
+	usedGB := float64(totalBytes-freeBytes) / float64(GB)
+	totalGB := float64(totalBytes) / float64(GB)
 	display.DotLabel("Memory")
 	fmt.Printf("%s%.2f GB / %.2f GB%s\n", display.Blue, usedGB, totalGB, display.Reset)
 }
@@ -209,7 +209,7 @@ func showDFDisk(path, label string) {
 	}
 
 	display.DotLabel(label)
-	fmt.Printf("%s%.2f GB / %.2f GB (%s used)%s\n", display.Blue, usedKB/1048576.0, totalKB/1048576.0, fields[4], display.Reset)
+	fmt.Printf("%s%.2f GB / %.2f GB (%s used)%s\n", display.Blue, usedKB/float64(MB), totalKB/float64(MB), fields[4], display.Reset)
 }
 
 func ShowTemp(cfg ConfigAccessor, debug bool) {}

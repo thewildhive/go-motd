@@ -3,11 +3,19 @@ package system
 import (
 	"fmt"
 	"os/exec"
+	"strconv"
 	"strings"
 	"time"
 
 	"motd/config"
 	"motd/display"
+)
+
+// Byte size constants for human-readable conversions.
+const (
+	KB = 1024
+	MB = 1024 * KB
+	GB = 1024 * MB
 )
 
 func ShowDocker(debug bool) {
@@ -75,4 +83,38 @@ func pluralSuffix(count int) string {
 		return ""
 	}
 	return "s"
+}
+
+// ShowDFDisk parses df output for a given path and displays it with a label.
+func ShowDFDisk(path, label string) {
+	output, err := exec.Command("df", path).Output()
+	if err != nil {
+		return
+	}
+
+	lines := strings.Split(string(output), "\n")
+	if len(lines) < 2 {
+		return
+	}
+	fields := strings.Fields(lines[1])
+	if len(fields) < 5 {
+		return
+	}
+
+	usedVal, usedErr := strconv.ParseFloat(fields[2], 64)
+	totalVal, totalErr := strconv.ParseFloat(fields[1], 64)
+	if usedErr != nil || totalErr != nil {
+		return
+	}
+
+	usedGB := usedVal / float64(MB)
+	totalGB := totalVal / float64(MB)
+	pct := strings.TrimSuffix(fields[4], "%")
+
+	display.DotLabel(label)
+	fmt.Printf("%s%.2f GB / %.2f GB (%s%% used)%s\n", display.Blue, usedGB, totalGB, pct, display.Reset)
+}
+
+func daysInMonth(t time.Time) int {
+	return time.Date(t.Year(), t.Month()+1, 0, 0, 0, 0, 0, t.Location()).Day()
 }
