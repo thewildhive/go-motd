@@ -120,6 +120,29 @@ func parseLegacyYAMLConfig(data []byte) (config.Config, []string, error) {
 	unsupportedServices := []string{}
 
 	lines := strings.Split(strings.ReplaceAll(string(data), "\r\n", "\n"), "\n")
+
+	// Detect indentation step from the first non-zero-indented line.
+	// Supports both 2-space and 4-space indentation (and any other
+	// consistent multiple). Lines are normalized to 2-space levels.
+	indentStep := 2
+	for _, candidate := range lines {
+		if strings.TrimSpace(candidate) == "" || strings.TrimSpace(candidate) == "---" {
+			continue
+		}
+		if n := countLeadingSpaces(candidate); n > 0 {
+			indentStep = n
+			break
+		}
+	}
+
+	// normalizeIndent converts raw indentation to 2-space-equivalent levels.
+	// For 4-space indentation: raw 0→0, 4→2, 8→4, 12→6, etc.
+	normalizeIndent := func(raw int) int {
+		if indentStep <= 2 || raw == 0 {
+			return raw
+		}
+		return (raw / indentStep) * 2
+	}
 	for lineNumber, rawLine := range lines {
 		var err error
 
@@ -132,7 +155,7 @@ func parseLegacyYAMLConfig(data []byte) (config.Config, []string, error) {
 			continue
 		}
 
-		indent := countLeadingSpaces(line)
+		indent := normalizeIndent(countLeadingSpaces(line))
 
 		if indent == 0 {
 			section = ""
@@ -226,6 +249,13 @@ func processServiceLine(parsedConfig *config.Config, unsupportedServices *[]stri
 				return currentService, currentServiceIndex, nil
 			}
 			currentServiceIndex = appendLegacyService(parsedConfig, currentService)
+
+			// Extract inline field from "- key: value" if present
+			itemContent := strings.TrimSpace(strings.TrimPrefix(trimmed, "-"))
+			if itemContent != "" {
+				setLegacyServiceField(parsedConfig, currentService, currentServiceIndex, itemContent, "")
+			}
+
 			return currentService, currentServiceIndex, nil
 		}
 
