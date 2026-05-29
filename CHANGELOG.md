@@ -1,3 +1,7 @@
+## [v1.4.4] - 2026-05-29
+
+- fix: only count Radarr movies where isAvailable is true (214c330)
+
 ## [v1.4.3] - 2026-05-29
 
 - fix: filter unavailable movies client-side in Radarr wanted list (8a8691b)
