@@ -1,3 +1,7 @@
+## [v1.4.2] - 2026-05-29
+
+- fix: exclude unavailable movies from Radarr missing count (c18706d)
+
 ## [v1.4.1] - 2026-05-29
 
 - refactor: replace external tool deps with native Go implementations (f9edb5e)
