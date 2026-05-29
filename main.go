@@ -85,6 +85,11 @@ func main() {
 	}
 
 	display.PrintHeader()
+
+	if msg := update.CheckUpdate(VERSION, client); msg != "" {
+		fmt.Printf("%s⚠ %s%s\n\n", display.Yellow, msg, display.Reset)
+	}
+
 	display.PrintSection("System Information")
 
 	sysCfg := system.ConfigAccessorFrom(cfg)

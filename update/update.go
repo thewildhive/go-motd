@@ -13,6 +13,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"time"
 
 	"motd/util"
 )
@@ -398,4 +399,115 @@ func restoreBackup(backupPath, execPath string) error {
 		return err
 	}
 	return os.Chmod(execPath, 0755)
+}
+
+const cacheFile = "motd-version-check"
+const cacheInterval = 15 * time.Minute
+
+// CheckUpdate returns a non-empty update message if a newer version of motd
+// is available. Results are cached for cacheInterval to avoid hammering the
+// GitHub API on every motd invocation.
+func CheckUpdate(currentVersion string, client *http.Client) string {
+	msg := readCachedVersion()
+	if msg != "" {
+		return msg
+	}
+
+	latest, err := fetchLatestVersion(client)
+	if err != nil {
+		return ""
+	}
+
+	if CompareVersions(currentVersion, latest) >= 0 {
+		writeCachedVersion("")
+		return ""
+	}
+
+	msg = fmt.Sprintf("An update is available for motd (%s → %s). Run 'motd self-update' to upgrade.", currentVersion, latest)
+	writeCachedVersion(msg)
+	return msg
+}
+
+func cacheDir() (string, error) {
+	cache, err := os.UserCacheDir()
+	if err != nil {
+		return "", err
+	}
+	dir := filepath.Join(cache, "motd")
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return "", err
+	}
+	return dir, nil
+}
+
+func cachePath() string {
+	dir, err := cacheDir()
+	if err != nil {
+		return ""
+	}
+	return filepath.Join(dir, cacheFile)
+}
+
+func readCachedVersion() string {
+	path := cachePath()
+	if path == "" {
+		return ""
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+
+	parts := strings.SplitN(string(data), "\n", 2)
+	if len(parts) < 2 {
+		return ""
+	}
+
+	ts, err := strconv.ParseInt(strings.TrimSpace(parts[0]), 10, 64)
+	if err != nil {
+		return ""
+	}
+
+	if time.Since(time.Unix(ts, 0)) > cacheInterval {
+		return ""
+	}
+
+	return strings.TrimSpace(parts[1])
+}
+
+func writeCachedVersion(msg string) {
+	path := cachePath()
+	if path == "" {
+		return
+	}
+
+	data := fmt.Sprintf("%d\n%s\n", time.Now().Unix(), msg)
+	_ = os.WriteFile(path, []byte(data), 0644)
+}
+
+func fetchLatestVersion(client *http.Client) (string, error) {
+	url := "https://api.github.com/repos/thewildhive/go-motd/releases/latest"
+
+	resp, err := client.Get(url)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("GitHub API returned status %d", resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", fmt.Errorf("failed to read response: %w", err)
+	}
+
+	var release GitHubRelease
+	if err := json.Unmarshal(body, &release); err != nil {
+		return "", fmt.Errorf("failed to parse release: %w", err)
+	}
+
+	return strings.TrimPrefix(release.TagName, "v"), nil
 }
