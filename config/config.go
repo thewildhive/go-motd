@@ -241,5 +241,3 @@ func Write(path string, cfg Config) error {
 
 	return nil
 }
-
-

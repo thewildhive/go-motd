@@ -478,5 +478,3 @@ func TestCountAvailableRecords_InvalidJSONCounted(t *testing.T) {
 		t.Fatalf("expected 2 (1 invalid + 1 available), got %d", got)
 	}
 }
-
-
