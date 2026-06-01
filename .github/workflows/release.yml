@@ -66,6 +66,10 @@ jobs:
           fi
 
       - name: Run quality checks
+        # Isolate the Go build cache to avoid spurious cache trim failures
+        # on runner images where the shared cache directory is not writable.
+        env:
+          GOCACHE: /tmp/go-build-cache
         run: |
           set -euo pipefail
           go test ./...
