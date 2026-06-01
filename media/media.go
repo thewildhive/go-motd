@@ -199,8 +199,7 @@ func isAPIServiceReady(service config.ServiceConfig) bool {
 }
 
 func formatMediaLine(label, text, color string) string {
-	const dotLabelWidth = 22
-	dots := dotLabelWidth - len(label)
+	dots := display.DotLabelWidth - len(label)
 	if dots < 0 {
 		dots = 0
 	}

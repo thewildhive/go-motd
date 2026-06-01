@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"motd/display"
+	"motd/util"
 )
 
 type ServiceConfig struct {
@@ -51,7 +52,7 @@ func (e *LegacyConfigError) Error() string {
 }
 
 func GetConfigPaths() []string {
-	home := getUserHome()
+	home := util.GetUserHome()
 	userConfig := filepath.Join(home, ".config", "motd", "config.json")
 	if home == "" {
 		return []string{"/opt/motd/config.json"}
@@ -60,7 +61,7 @@ func GetConfigPaths() []string {
 }
 
 func GetLegacyConfigPaths() []string {
-	home := getUserHome()
+	home := util.GetUserHome()
 	userYML := filepath.Join(home, ".config", "motd", "config.yml")
 	userYAML := filepath.Join(home, ".config", "motd", "config.yaml")
 	if home == "" {
@@ -241,10 +242,4 @@ func Write(path string, cfg Config) error {
 	return nil
 }
 
-func getUserHome() string {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return ""
-	}
-	return home
-}
+

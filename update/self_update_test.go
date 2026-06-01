@@ -88,6 +88,12 @@ func TestWindowsBatchPath(t *testing.T) {
 	}
 }
 
+func TestWindowsBatchPathQuoteEscaping(t *testing.T) {
+	if got := windowsBatchPath(`C:/"Program"/motd`); got != `C:\""Program""\motd` {
+		t.Fatalf("unexpected quoted Windows batch path: %q", got)
+	}
+}
+
 func TestGetPlatformAssetName_NonEmptyOnCurrentPlatform(t *testing.T) {
 	if got := getPlatformAssetName(); got == "" {
 		t.Fatal("expected non-empty asset name for current platform")

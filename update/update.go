@@ -404,7 +404,10 @@ func copyFileContents(src, dst string) error {
 }
 
 func windowsBatchPath(filePath string) string {
-	return strings.ReplaceAll(filepath.ToSlash(filePath), "/", "\\")
+	return strings.ReplaceAll(
+		strings.ReplaceAll(filepath.ToSlash(filePath), "/", "\\"),
+		`"`, `""`,
+	)
 }
 
 func restoreBackup(backupPath, execPath string) error {

@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"motd/display"
+	"motd/util"
 )
 
 func ShowOS(cfg ConfigAccessor, debug bool) {
@@ -93,7 +94,7 @@ func ShowMemory(cfg ConfigAccessor, debug bool) {
 }
 
 func ShowBandwidth(cfg ConfigAccessor, debug bool) {
-	if !hasCommand("vnstat") {
+	if !util.HasCommand("vnstat") {
 		return
 	}
 

@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"motd/config"
@@ -23,6 +24,14 @@ func handleConfigure() {
 			configExists = true
 			break
 		}
+	}
+
+	// Check write access to the config directory before prompting the user.
+	dir := filepath.Dir(cfgPath)
+	if err := checkWriteAccess(dir); err != nil {
+		fmt.Printf("%sCannot write to %s%s\n", display.Red, dir, display.Reset)
+		fmt.Printf("%sCreate the file manually or use a writable path with -config.%s\n", display.Yellow, display.Reset)
+		os.Exit(1)
 	}
 
 	// Load existing config or start fresh
@@ -246,4 +255,16 @@ func setFieldValue(svc *config.ServiceConfig, field, value string) {
 	case "api_key":
 		svc.APIKey = value
 	}
+}
+
+func checkWriteAccess(dir string) error {
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return err
+	}
+	tmpFile, err := os.CreateTemp(dir, ".motd-write-test-*")
+	if err != nil {
+		return err
+	}
+	tmpFile.Close()
+	return os.Remove(tmpFile.Name())
 }

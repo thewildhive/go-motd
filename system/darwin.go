@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"motd/display"
+	"motd/util"
 )
 
 func ShowOS(cfg ConfigAccessor, debug bool) {
@@ -128,7 +129,7 @@ func parseDarwinFreeMemory(output []byte) (uint64, bool) {
 }
 
 func ShowBandwidth(cfg ConfigAccessor, debug bool) {
-	if !hasCommand("vnstat") {
+	if !util.HasCommand("vnstat") {
 		return
 	}
 

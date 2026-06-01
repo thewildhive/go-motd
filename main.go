@@ -19,16 +19,8 @@ var VERSION = "dev"
 const curlTimeout = 5 * time.Second
 
 func main() {
-	if len(os.Args) > 1 {
-		switch os.Args[1] {
-		case "self-update":
-			client := &http.Client{Timeout: curlTimeout}
-			update.HandleSelfUpdate(VERSION, client)
-			return
-		case "configure":
-			handleConfigure()
-			return
-		}
+	if handleSubcommand() {
+		return
 	}
 
 	showHelp := flag.Bool("h", false, "Show help message")
@@ -108,6 +100,23 @@ func main() {
 	}
 
 	fmt.Println()
+}
+
+func handleSubcommand() bool {
+	if len(os.Args) < 2 {
+		return false
+	}
+	switch os.Args[1] {
+	case "self-update":
+		client := &http.Client{Timeout: curlTimeout}
+		update.HandleSelfUpdate(VERSION, client)
+		return true
+	case "configure":
+		handleConfigure()
+		return true
+	default:
+		return false
+	}
 }
 
 func showPlatformSystemInfo(cfg system.ConfigAccessor, debug bool) {

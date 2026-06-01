@@ -19,7 +19,7 @@ const (
 )
 
 func ShowDocker(debug bool) {
-	if !hasCommand("docker") {
+	if !util.HasCommand("docker") {
 		return
 	}
 
@@ -35,11 +35,6 @@ func ShowDocker(debug bool) {
 
 	display.DotLabel("Docker Containers")
 	fmt.Printf("%s%d running%s\n", display.Blue, count, display.Reset)
-}
-
-func hasCommand(name string) bool {
-	_, err := exec.LookPath(name)
-	return err == nil
 }
 
 // ConfigAccessor provides system-relevant config values

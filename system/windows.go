@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"motd/display"
+	"motd/util"
 )
 
 func ShowOS(cfg ConfigAccessor, debug bool) {
@@ -203,7 +204,7 @@ func getDefaultInterface() string {
 }
 
 func ShowTemp(cfg ConfigAccessor, debug bool) {
-	if !hasCommand("powershell") {
+	if !util.HasCommand("powershell") {
 		return
 	}
 
