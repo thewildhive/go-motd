@@ -11,6 +11,15 @@ import (
 	"motd/system"
 )
 
+type wizardService struct {
+	DisplayName       string
+	DefaultURL        string
+	DefaultInstance   string
+	CredentialField   string
+	CredentialDefault string
+	Slice             *[]config.ServiceConfig
+}
+
 func handleConfigure() {
 	cfgPath := config.GetConfigPaths()[0]
 	reader := bufio.NewReader(os.Stdin)
@@ -55,35 +64,16 @@ func handleConfigure() {
 	// --- Service Setup ---
 	fmt.Printf("\n%s━━━ Service Setup ── toggle services on/off ──%s\n", display.Bold, display.Reset)
 
-	configureServiceSlice(reader, &cfg, "Plex", &cfg.Services.Plex, func(svc *config.ServiceConfig) {
-		promptString(reader, svc, "name", "Main")
-		promptString(reader, svc, "url", "http://localhost:32400")
-		promptCredential(reader, svc, "token", "")
-	})
-
-	configureServiceSlice(reader, &cfg, "Jellyfin", &cfg.Services.Jellyfin, func(svc *config.ServiceConfig) {
-		promptString(reader, svc, "name", "Main")
-		promptString(reader, svc, "url", "http://localhost:8096")
-		promptCredential(reader, svc, "token", "")
-	})
-
-	configureServiceSlice(reader, &cfg, "Sonarr", &cfg.Services.Sonarr, func(svc *config.ServiceConfig) {
-		promptString(reader, svc, "name", "HD")
-		promptString(reader, svc, "url", "http://localhost:8989")
-		promptCredential(reader, svc, "api_key", "")
-	})
-
-	configureServiceSlice(reader, &cfg, "Radarr", &cfg.Services.Radarr, func(svc *config.ServiceConfig) {
-		promptString(reader, svc, "name", "HD")
-		promptString(reader, svc, "url", "http://localhost:7878")
-		promptCredential(reader, svc, "api_key", "")
-	})
-
-	configureServiceSlice(reader, &cfg, "Seerr", &cfg.Services.Seerr, func(svc *config.ServiceConfig) {
-		promptString(reader, svc, "name", "Main")
-		promptString(reader, svc, "url", "http://localhost:5055")
-		promptCredential(reader, svc, "api_key", "")
-	})
+	services := []wizardService{
+		{"Plex", "http://localhost:32400", "Main", "token", "", &cfg.Services.Plex},
+		{"Jellyfin", "http://localhost:8096", "Main", "token", "", &cfg.Services.Jellyfin},
+		{"Sonarr", "http://localhost:8989", "HD", "api_key", "", &cfg.Services.Sonarr},
+		{"Radarr", "http://localhost:7878", "HD", "api_key", "", &cfg.Services.Radarr},
+		{"Seerr", "http://localhost:5055", "Main", "api_key", "", &cfg.Services.Seerr},
+	}
+	for _, ws := range services {
+		configureServiceSlice(reader, &cfg, ws)
+	}
 
 	// --- Write ---
 	if err := config.Write(cfgPath, cfg); err != nil {
@@ -94,23 +84,24 @@ func handleConfigure() {
 	fmt.Printf("\n%sConfiguration saved to %s%s\n", display.Green, cfgPath, display.Reset)
 }
 
-// configureServiceSlice adds or modifies a service instance.
-func configureServiceSlice(reader *bufio.Reader, cfg *config.Config, name string, slice *[]config.ServiceConfig, configure func(*config.ServiceConfig)) {
+// configureServiceSlice adds or modifies service instances defined by ws.
+func configureServiceSlice(reader *bufio.Reader, cfg *config.Config, ws wizardService) {
+	slice := ws.Slice
 	if len(*slice) == 0 {
-		if !promptBool(reader, fmt.Sprintf("Setup %s", name), false) {
+		if !promptBool(reader, fmt.Sprintf("Setup %s", ws.DisplayName), false) {
 			return
 		}
 		*slice = append(*slice, config.ServiceConfig{Enabled: true})
-		configure(&(*slice)[0])
+		promptInstance(reader, &(*slice)[0], ws)
 		return
 	}
 
-	fmt.Printf("\n%s configured:\n", name)
+	fmt.Printf("\n%s configured:\n", ws.DisplayName)
 	for i := range *slice {
 		fmt.Printf("  Instance %d: %s %s\n", i+1, (*slice)[i].Name, (*slice)[i].URL)
 	}
 
-	action := promptUpdateAction(reader, name)
+	action := promptUpdateAction(reader, ws.DisplayName)
 	switch action {
 	case "skip":
 		return
@@ -126,9 +117,15 @@ func configureServiceSlice(reader *bufio.Reader, cfg *config.Config, name string
 	default: // "update"
 		for i := range *slice {
 			fmt.Printf("  --- Instance %d ---\n", i+1)
-			configure(&(*slice)[i])
+			promptInstance(reader, &(*slice)[i], ws)
 		}
 	}
+}
+
+func promptInstance(reader *bufio.Reader, svc *config.ServiceConfig, ws wizardService) {
+	promptString(reader, svc, "name", ws.DefaultInstance)
+	promptString(reader, svc, "url", ws.DefaultURL)
+	promptCredential(reader, svc, ws.CredentialField, ws.CredentialDefault)
 }
 
 // readLine reads a single line from the reader, trimming whitespace.

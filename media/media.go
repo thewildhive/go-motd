@@ -14,6 +14,41 @@ import (
 	"motd/util"
 )
 
+type Service interface {
+	Name() string
+	Render(client *http.Client, debug bool) (text string, color string, ok bool)
+}
+
+type plexService struct {
+	cfg config.ServiceConfig
+}
+
+func (s plexService) Name() string { return serviceLabel("Plex", s.cfg.Name) }
+
+type jellyfinService struct {
+	cfg config.ServiceConfig
+}
+
+func (s jellyfinService) Name() string { return serviceLabel("Jellyfin", s.cfg.Name) }
+
+type sonarrService struct {
+	cfg config.ServiceConfig
+}
+
+func (s sonarrService) Name() string { return serviceLabel("Sonarr", s.cfg.Name) }
+
+type radarrService struct {
+	cfg config.ServiceConfig
+}
+
+func (s radarrService) Name() string { return serviceLabel("Radarr", s.cfg.Name) }
+
+type seerrService struct {
+	cfg config.ServiceConfig
+}
+
+func (s seerrService) Name() string { return serviceLabel("Seerr", s.cfg.Name) }
+
 type plexSessionsResponse struct {
 	Size   int `xml:"size,attr"`
 	Videos []struct {
@@ -41,8 +76,6 @@ type arrWantedMissingResponse struct {
 	Records      []json.RawMessage `json:"records"`
 }
 
-// wantedRecord is a minimal view of a single record from wanted/missing
-// to check availability without decoding the full movie object.
 type wantedRecord struct {
 	IsAvailable bool `json:"isAvailable"`
 }
@@ -53,107 +86,81 @@ type seerrRequestCountResponse struct {
 
 type mediaStatus struct {
 	order int
-	line  string
+	name  string
+	text  string
+	color string
+}
+
+func AllServices(cfg config.Config) []Service {
+	out := make([]Service, 0,
+		len(cfg.Services.Plex)+len(cfg.Services.Jellyfin)+
+			len(cfg.Services.Sonarr)+len(cfg.Services.Radarr)+
+			len(cfg.Services.Seerr))
+
+	for i := range cfg.Services.Plex {
+		if isPlexReady(cfg.Services.Plex[i]) {
+			out = append(out, plexService{cfg: cfg.Services.Plex[i]})
+		}
+	}
+	for i := range cfg.Services.Jellyfin {
+		if isJellyfinReady(cfg.Services.Jellyfin[i]) {
+			out = append(out, jellyfinService{cfg: cfg.Services.Jellyfin[i]})
+		}
+	}
+	for i := range cfg.Services.Sonarr {
+		if isAPIServiceReady(cfg.Services.Sonarr[i]) {
+			out = append(out, sonarrService{cfg: cfg.Services.Sonarr[i]})
+		}
+	}
+	for i := range cfg.Services.Radarr {
+		if isAPIServiceReady(cfg.Services.Radarr[i]) {
+			out = append(out, radarrService{cfg: cfg.Services.Radarr[i]})
+		}
+	}
+	for i := range cfg.Services.Seerr {
+		if isAPIServiceReady(cfg.Services.Seerr[i]) {
+			out = append(out, seerrService{cfg: cfg.Services.Seerr[i]})
+		}
+	}
+	return out
 }
 
 func HasMediaServices(cfg config.Config) bool {
-	for _, plex := range cfg.Services.Plex {
-		if isPlexReady(plex) {
-			return true
-		}
-	}
-
-	for _, jellyfin := range cfg.Services.Jellyfin {
-		if isJellyfinReady(jellyfin) {
-			return true
-		}
-	}
-
-	for _, sonarr := range cfg.Services.Sonarr {
-		if isAPIServiceReady(sonarr) {
-			return true
-		}
-	}
-
-	for _, radarr := range cfg.Services.Radarr {
-		if isAPIServiceReady(radarr) {
-			return true
-		}
-	}
-
-	for _, seerr := range cfg.Services.Seerr {
-		if isAPIServiceReady(seerr) {
-			return true
-		}
-	}
-
-	return false
+	return len(AllServices(cfg)) > 0
 }
 
 func ShowMediaServices(cfg config.Config, client *http.Client, debug bool) {
-	results := collectMediaStatuses(cfg, client, debug)
-	if len(results) == 0 {
+	services := AllServices(cfg)
+	if len(services) == 0 {
 		return
 	}
 
 	display.PrintSection("Media Services")
-	for _, result := range results {
-		fmt.Print(result.line)
+	for _, result := range collectMediaStatuses(services, client, debug) {
+		fmt.Print(formatMediaLine(result.name, result.text, result.color))
 	}
 }
 
-func collectMediaStatuses(cfg config.Config, client *http.Client, debug bool) []mediaStatus {
+func collectMediaStatuses(services []Service, client *http.Client, debug bool) []mediaStatus {
 	var wg sync.WaitGroup
-	resultCapacity := len(cfg.Services.Plex) + len(cfg.Services.Jellyfin) + len(cfg.Services.Sonarr) + len(cfg.Services.Radarr) + len(cfg.Services.Seerr)
-	results := make(chan mediaStatus, resultCapacity)
+	results := make(chan mediaStatus, len(services))
 	order := 0
 
-	start := func(fn func() (string, bool)) {
+	start := func(svc Service) {
 		currentOrder := order
 		order++
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			line, ok := fn()
+			text, color, ok := svc.Render(client, debug)
 			if ok {
-				results <- mediaStatus{order: currentOrder, line: line}
+				results <- mediaStatus{order: currentOrder, name: svc.Name(), text: text, color: color}
 			}
 		}()
 	}
 
-	for _, plex := range cfg.Services.Plex {
-		if isPlexReady(plex) {
-			service := plex
-			start(func() (string, bool) { return renderPlexInstance(service, client, debug) })
-		}
-	}
-
-	for _, jellyfin := range cfg.Services.Jellyfin {
-		if isJellyfinReady(jellyfin) {
-			service := jellyfin
-			start(func() (string, bool) { return renderJellyfinInstance(service, client, debug) })
-		}
-	}
-
-	for _, sonarr := range cfg.Services.Sonarr {
-		if isAPIServiceReady(sonarr) {
-			service := sonarr
-			start(func() (string, bool) { return renderSonarrInstance(service, client, debug) })
-		}
-	}
-
-	for _, radarr := range cfg.Services.Radarr {
-		if isAPIServiceReady(radarr) {
-			service := radarr
-			start(func() (string, bool) { return renderRadarrInstance(service, client, debug) })
-		}
-	}
-
-	for _, seerr := range cfg.Services.Seerr {
-		if isAPIServiceReady(seerr) {
-			service := seerr
-			start(func() (string, bool) { return renderSeerrInstance(service, client, debug) })
-		}
+	for _, svc := range services {
+		start(svc)
 	}
 
 	go func() {
@@ -199,8 +206,7 @@ func isAPIServiceReady(service config.ServiceConfig) bool {
 }
 
 func formatMediaLine(label, text, color string) string {
-	const dotLabelWidth = 22
-	dots := dotLabelWidth - len(label)
+	dots := display.DotLabelWidth - len(label)
 	if dots < 0 {
 		dots = 0
 	}
@@ -245,15 +251,11 @@ func parseARRMissingCount(data arrWantedMissingResponse) int {
 	return len(data.Records)
 }
 
-// countAvailableRecords returns only records that are released or available.
-// This provides client-side filtering as a fallback for Radarr versions
-// that don't fully support the excludeUnavailable server-side parameter.
 func countAvailableRecords(records []json.RawMessage) int {
 	count := 0
 	for _, raw := range records {
 		var rec wantedRecord
 		if err := json.Unmarshal(raw, &rec); err != nil {
-			// If we can't parse it, count it to be safe
 			count++
 			continue
 		}
@@ -290,30 +292,30 @@ func parseJellyfinSessions(sessions []jellyfinSession) (int, int, float64, bool)
 	return active, transcodes, mbps, hasBitrate
 }
 
-func renderPlexInstance(plex config.ServiceConfig, client *http.Client, debug bool) (string, bool) {
-	req, err := http.NewRequest("GET", serviceURL(plex.URL, "/status/sessions"), nil)
+func (s plexService) Render(client *http.Client, debug bool) (string, string, bool) {
+	req, err := http.NewRequest("GET", serviceURL(s.cfg.URL, "/status/sessions"), nil)
 	if err != nil {
-		display.DebugLog(debug, "Plex request failed for %s: %v", plex.Name, err)
-		return "", false
+		display.DebugLog(debug, "Plex request failed for %s: %v", s.cfg.Name, err)
+		return "", "", false
 	}
-	req.Header.Set("X-Plex-Token", plex.Token)
+	req.Header.Set("X-Plex-Token", s.cfg.Token)
 
 	resp, err := client.Do(req)
 	if err != nil {
-		display.DebugLog(debug, "Plex request failed for %s: %v", plex.Name, err)
-		return "", false
+		display.DebugLog(debug, "Plex request failed for %s: %v", s.cfg.Name, err)
+		return "", "", false
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		display.DebugLog(debug, "Plex returned status %d for %s", resp.StatusCode, plex.Name)
-		return "", false
+		display.DebugLog(debug, "Plex returned status %d for %s", resp.StatusCode, s.cfg.Name)
+		return "", "", false
 	}
 
 	var sessions plexSessionsResponse
 	if err := xml.NewDecoder(resp.Body).Decode(&sessions); err != nil {
-		display.DebugLog(debug, "Failed to parse Plex XML for %s: %v", plex.Name, err)
-		return "", false
+		display.DebugLog(debug, "Failed to parse Plex XML for %s: %v", s.cfg.Name, err)
+		return "", "", false
 	}
 
 	transcodes := 0
@@ -325,156 +327,142 @@ func renderPlexInstance(plex config.ServiceConfig, client *http.Client, debug bo
 		bandwidth += video.Session.Bandwidth
 	}
 
-	label := serviceLabel("Plex", plex.Name)
 	if sessions.Size == 0 {
-		return formatMediaLine(label, "No active streams", display.Green), true
+		return "No active streams", display.Green, true
 	}
 
 	bwMbps := float64(bandwidth) / 1000.0
 	if transcodes == 0 {
-		return formatMediaLine(label, fmt.Sprintf("%d streams (%.2f Mbps)", sessions.Size, bwMbps), display.Yellow), true
+		return fmt.Sprintf("%d streams (%.2f Mbps)", sessions.Size, bwMbps), display.Yellow, true
 	}
 
-	return formatMediaLine(label, fmt.Sprintf("%d streams, %d transcodes (%.2f Mbps)", sessions.Size, transcodes, bwMbps), display.Red), true
+	return fmt.Sprintf("%d streams, %d transcodes (%.2f Mbps)", sessions.Size, transcodes, bwMbps), display.Red, true
 }
 
-func renderJellyfinInstance(jellyfin config.ServiceConfig, client *http.Client, debug bool) (string, bool) {
-	req, err := http.NewRequest("GET", serviceURL(jellyfin.URL, "/Sessions"), nil)
+func (s jellyfinService) Render(client *http.Client, debug bool) (string, string, bool) {
+	req, err := http.NewRequest("GET", serviceURL(s.cfg.URL, "/Sessions"), nil)
 	if err != nil {
-		display.DebugLog(debug, "Jellyfin request build failed for %s: %v", jellyfin.Name, err)
-		return "", false
+		display.DebugLog(debug, "Jellyfin request build failed for %s: %v", s.cfg.Name, err)
+		return "", "", false
 	}
-	req.Header.Set("X-Emby-Token", jellyfin.Token)
-	req.Header.Set("Authorization", "MediaBrowser Token=\""+jellyfin.Token+"\"")
+	req.Header.Set("X-Emby-Token", s.cfg.Token)
+	req.Header.Set("Authorization", "MediaBrowser Token=\""+s.cfg.Token+"\"")
 
 	resp, err := client.Do(req)
 	if err != nil {
-		display.DebugLog(debug, "Jellyfin request failed for %s: %v", jellyfin.Name, err)
-		return "", false
+		display.DebugLog(debug, "Jellyfin request failed for %s: %v", s.cfg.Name, err)
+		return "", "", false
 	}
 	defer resp.Body.Close()
 
 	var sessions []jellyfinSession
 	if err := decodeJSONResponse(resp, &sessions); err != nil {
-		display.DebugLog(debug, "Failed to decode Jellyfin response for %s: %v", jellyfin.Name, err)
-		return "", false
+		display.DebugLog(debug, "Failed to decode Jellyfin response for %s: %v", s.cfg.Name, err)
+		return "", "", false
 	}
 
 	count, transcodes, bwMbps, hasBW := parseJellyfinSessions(sessions)
-	label := serviceLabel("Jellyfin", jellyfin.Name)
 
 	if count == 0 {
-		return formatMediaLine(label, "No active streams", display.Green), true
+		return "No active streams", display.Green, true
 	}
 
 	if transcodes == 0 {
 		if hasBW {
-			return formatMediaLine(label, fmt.Sprintf("%d streams (%.2f Mbps)", count, bwMbps), display.Yellow), true
+			return fmt.Sprintf("%d streams (%.2f Mbps)", count, bwMbps), display.Yellow, true
 		}
-		return formatMediaLine(label, fmt.Sprintf("%d streams", count), display.Yellow), true
+		return fmt.Sprintf("%d streams", count), display.Yellow, true
 	}
 
 	if hasBW {
-		return formatMediaLine(label, fmt.Sprintf("%d streams, %d transcodes (%.2f Mbps)", count, transcodes, bwMbps), display.Red), true
+		return fmt.Sprintf("%d streams, %d transcodes (%.2f Mbps)", count, transcodes, bwMbps), display.Red, true
 	}
 
-	return formatMediaLine(label, fmt.Sprintf("%d streams, %d transcodes", count, transcodes), display.Red), true
+	return fmt.Sprintf("%d streams, %d transcodes", count, transcodes), display.Red, true
 }
 
-func renderSonarrInstance(sonarr config.ServiceConfig, client *http.Client, debug bool) (string, bool) {
-	req, err := http.NewRequest("GET", serviceURL(sonarr.URL, "/api/v3/wanted/missing"), nil)
+func (s sonarrService) Render(client *http.Client, debug bool) (string, string, bool) {
+	req, err := http.NewRequest("GET", serviceURL(s.cfg.URL, "/api/v3/wanted/missing"), nil)
 	if err != nil {
-		display.DebugLog(debug, "Sonarr request build failed for %s: %v", sonarr.Name, err)
-		return "", false
+		display.DebugLog(debug, "Sonarr request build failed for %s: %v", s.cfg.Name, err)
+		return "", "", false
 	}
-	req.Header.Set("X-Api-Key", sonarr.APIKey)
+	req.Header.Set("X-Api-Key", s.cfg.APIKey)
 
 	resp, err := client.Do(req)
 	if err != nil {
-		display.DebugLog(debug, "Sonarr request failed for %s: %v", sonarr.Name, err)
-		return "", false
+		display.DebugLog(debug, "Sonarr request failed for %s: %v", s.cfg.Name, err)
+		return "", "", false
 	}
 	defer resp.Body.Close()
 
 	var result arrWantedMissingResponse
 	if err := decodeJSONResponse(resp, &result); err != nil {
-		display.DebugLog(debug, "Failed to decode Sonarr response for %s: %v", sonarr.Name, err)
-		return "", false
+		display.DebugLog(debug, "Failed to decode Sonarr response for %s: %v", s.cfg.Name, err)
+		return "", "", false
 	}
 
 	count := parseARRMissingCount(result)
-	label := serviceLabel("Sonarr", sonarr.Name)
 	if count == 0 {
-		return formatMediaLine(label, "No missing episodes", display.Green), true
+		return "No missing episodes", display.Green, true
 	}
 
-	return formatMediaLine(label, fmt.Sprintf("%d missing episode%s", count, util.PluralSuffix(count)), display.Yellow), true
+	return fmt.Sprintf("%d missing episode%s", count, util.PluralSuffix(count)), display.Yellow, true
 }
 
-func renderRadarrInstance(radarr config.ServiceConfig, client *http.Client, debug bool) (string, bool) {
-	// excludeUnavailable filters out movies that haven't been released yet,
-	// so only truly available-but-missing movies are counted.
-	req, err := http.NewRequest("GET", serviceURL(radarr.URL, "/api/v3/wanted/missing?excludeUnavailable=true"), nil)
+func (s radarrService) Render(client *http.Client, debug bool) (string, string, bool) {
+	req, err := http.NewRequest("GET", serviceURL(s.cfg.URL, "/api/v3/wanted/missing?excludeUnavailable=true"), nil)
 	if err != nil {
-		display.DebugLog(debug, "Radarr request build failed for %s: %v", radarr.Name, err)
-		return "", false
+		display.DebugLog(debug, "Radarr request build failed for %s: %v", s.cfg.Name, err)
+		return "", "", false
 	}
-	req.Header.Set("X-Api-Key", radarr.APIKey)
+	req.Header.Set("X-Api-Key", s.cfg.APIKey)
 
 	resp, err := client.Do(req)
 	if err != nil {
-		display.DebugLog(debug, "Radarr request failed for %s: %v", radarr.Name, err)
-		return "", false
+		display.DebugLog(debug, "Radarr request failed for %s: %v", s.cfg.Name, err)
+		return "", "", false
 	}
 	defer resp.Body.Close()
 
 	var result arrWantedMissingResponse
 	if err := decodeJSONResponse(resp, &result); err != nil {
-		display.DebugLog(debug, "Failed to decode Radarr response for %s: %v", radarr.Name, err)
-		return "", false
+		display.DebugLog(debug, "Failed to decode Radarr response for %s: %v", s.cfg.Name, err)
+		return "", "", false
 	}
 
 	count := countAvailableRecords(result.Records)
-	label := serviceLabel("Radarr", radarr.Name)
 	if count == 0 {
-		return formatMediaLine(label, "No missing movies", display.Green), true
+		return "No missing movies", display.Green, true
 	}
 
-	return formatMediaLine(label, fmt.Sprintf("%d missing movie%s", count, util.PluralSuffix(count)), display.Yellow), true
+	return fmt.Sprintf("%d missing movie%s", count, util.PluralSuffix(count)), display.Yellow, true
 }
 
-func renderSeerrInstance(seerr config.ServiceConfig, client *http.Client, debug bool) (string, bool) {
-	pending, err := fetchSeerrPendingCount(client, seerr.URL, seerr.APIKey)
+func (s seerrService) Render(client *http.Client, debug bool) (string, string, bool) {
+	req, err := http.NewRequest("GET", serviceURL(s.cfg.URL, "/api/v1/request/count"), nil)
 	if err != nil {
-		display.DebugLog(debug, "Seerr request failed for %s: %v", seerr.Name, err)
-		return "", false
+		display.DebugLog(debug, "Seerr request build failed for %s: %v", s.cfg.Name, err)
+		return "", "", false
 	}
-
-	label := serviceLabel("Seerr", seerr.Name)
-	if pending == 0 {
-		return formatMediaLine(label, "No pending requests", display.Green), true
-	}
-
-	return formatMediaLine(label, fmt.Sprintf("%d pending request%s", pending, util.PluralSuffix(pending)), display.Yellow), true
-}
-
-func fetchSeerrPendingCount(client *http.Client, baseURL, apiKey string) (int, error) {
-	req, err := http.NewRequest("GET", serviceURL(baseURL, "/api/v1/request/count"), nil)
-	if err != nil {
-		return 0, err
-	}
-	req.Header.Set("X-Api-Key", apiKey)
+	req.Header.Set("X-Api-Key", s.cfg.APIKey)
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return 0, err
+		display.DebugLog(debug, "Seerr request failed for %s: %v", s.cfg.Name, err)
+		return "", "", false
 	}
 	defer resp.Body.Close()
 
 	var result seerrRequestCountResponse
 	if err := decodeJSONResponse(resp, &result); err != nil {
-		return 0, err
+		display.DebugLog(debug, "Failed to decode Seerr response for %s: %v", s.cfg.Name, err)
+		return "", "", false
 	}
 
-	return result.Pending, nil
+	if result.Pending == 0 {
+		return "No pending requests", display.Green, true
+	}
+
+	return fmt.Sprintf("%d pending request%s", result.Pending, util.PluralSuffix(result.Pending)), display.Yellow, true
 }

@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -94,13 +93,13 @@ func TestRenderJellyfinInstance_RequestAndOutput(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := server.Client()
-	line, ok := renderJellyfinInstance(config.ServiceConfig{Name: "Main", URL: server.URL, Token: "jellyfin-token", Enabled: true}, client, false)
+	svc := jellyfinService{cfg: config.ServiceConfig{Name: "Main", URL: server.URL, Token: "jellyfin-token", Enabled: true}}
+	text, _, ok := svc.Render(server.Client(), false)
 	if !ok {
 		t.Fatal("expected Jellyfin output")
 	}
-	if !strings.Contains(line, "Jellyfin (Main)") || !strings.Contains(line, "1 streams, 1 transcode") || !strings.Contains(line, "5.00 Mbps") {
-		t.Fatalf("unexpected Jellyfin output: %q", line)
+	if !strings.Contains(text, "1 streams, 1 transcode") || !strings.Contains(text, "5.00 Mbps") {
+		t.Fatalf("unexpected Jellyfin output: %q", text)
 	}
 }
 
@@ -120,13 +119,13 @@ func TestRenderRadarrInstance_RequestAndPluralization(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := server.Client()
-	line, ok := renderRadarrInstance(config.ServiceConfig{Name: "HD", URL: server.URL, APIKey: "radarr-key", Enabled: true}, client, false)
+	svc := radarrService{cfg: config.ServiceConfig{Name: "HD", URL: server.URL, APIKey: "radarr-key", Enabled: true}}
+	text, _, ok := svc.Render(server.Client(), false)
 	if !ok {
 		t.Fatal("expected Radarr output")
 	}
-	if !strings.Contains(line, "Radarr (HD)") || !strings.Contains(line, "1 missing movie") || strings.Contains(line, "movies") {
-		t.Fatalf("unexpected Radarr output: %q", line)
+	if !strings.Contains(text, "1 missing movie") || strings.Contains(text, "movies") {
+		t.Fatalf("unexpected Radarr output: %q", text)
 	}
 }
 
@@ -145,13 +144,13 @@ func TestRenderPlexInstance_ActiveTranscodes(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := server.Client()
-	line, ok := renderPlexInstance(config.ServiceConfig{Name: "Main", URL: server.URL, Token: "plex-token", Enabled: true}, client, false)
+	svc := plexService{cfg: config.ServiceConfig{Name: "Main", URL: server.URL, Token: "plex-token", Enabled: true}}
+	text, _, ok := svc.Render(server.Client(), false)
 	if !ok {
 		t.Fatal("expected Plex output")
 	}
-	if !strings.Contains(line, "Plex (Main)") || !strings.Contains(line, "2 streams, 1 transcode") || !strings.Contains(line, "6.00 Mbps") {
-		t.Fatalf("unexpected Plex output: %q", line)
+	if !strings.Contains(text, "2 streams, 1 transcode") || !strings.Contains(text, "6.00 Mbps") {
+		t.Fatalf("unexpected Plex output: %q", text)
 	}
 }
 
@@ -224,7 +223,7 @@ func TestShowMediaServicesStableOrder(t *testing.T) {
 		fmt.Fprint(buf, "dummy output to check ordering\n")
 	}
 
-	results := collectMediaStatuses(cfg, client, false)
+	results := collectMediaStatuses(AllServices(cfg), client, false)
 	if len(results) == 0 {
 		t.Fatal("expected media status results")
 	}
@@ -374,7 +373,7 @@ func TestHasNowPlayingItem(t *testing.T) {
 	}
 }
 
-func TestFetchSeerrPendingCount(t *testing.T) {
+func TestSeerrServiceRender(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/v1/request/count" {
 			http.Error(w, "not found", http.StatusNotFound)
@@ -389,13 +388,13 @@ func TestFetchSeerrPendingCount(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := server.Client()
-	count, err := fetchSeerrPendingCount(client, server.URL, "test-key")
-	if err != nil {
-		t.Fatalf("fetchSeerrPendingCount failed: %v", err)
+	svc := seerrService{cfg: config.ServiceConfig{Name: "Main", URL: server.URL, APIKey: "test-key", Enabled: true}}
+	text, _, ok := svc.Render(server.Client(), false)
+	if !ok {
+		t.Fatal("expected Seerr output")
 	}
-	if count != 5 {
-		t.Fatalf("expected 5 pending, got %d", count)
+	if !strings.Contains(text, "5 pending requests") {
+		t.Fatalf("unexpected Seerr output: %q", text)
 	}
 }
 
@@ -480,5 +479,4 @@ func TestCountAvailableRecords_InvalidJSONCounted(t *testing.T) {
 	}
 }
 
-var _ = fmt.Print
-var _ = io.Discard
+
