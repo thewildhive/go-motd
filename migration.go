@@ -112,6 +112,23 @@ func migrateLegacyConfigFromPaths(jsonPaths, legacyPaths []string) (string, stri
 	return legacyPath, jsonPath, unsupportedServices, nil
 }
 
+// parseLegacyYAMLConfig parses a subset of YAML that matches the legacy
+// config.yml format used by the original Python motd script.
+//
+// Supported:
+//   - 2-space and 4-space indentation (auto-detected)
+//   - Inline comments starting with # preceded by whitespace
+//   - Quoted and unquoted scalar values
+//   - booleans: yes/no/true/false/on/off/1/0
+//   - YAML document separator (---)
+//
+// Unsupported:
+//   - Anchors and aliases (& *)
+//   - Flow style ({ }, [ ])
+//   - Multi-line scalars (|, >)
+//   - Tagged values
+//   - Tabs (rejected with an error)
+//   - # characters inside unquoted values
 func parseLegacyYAMLConfig(data []byte) (config.Config, []string, error) {
 	parsedConfig := newMigratedConfig()
 	section := ""
@@ -204,7 +221,7 @@ func parseLegacyYAMLConfig(data []byte) (config.Config, []string, error) {
 				if key == "interface" {
 					interfaceName, err := parseLegacyYAMLString(value)
 					if err != nil {
-						return parsedConfig, unsupportedServices, err
+						return parsedConfig, unsupportedServices, fmt.Errorf("interface: %w", err)
 					}
 					parsedConfig.System.Network.Interface = interfaceName
 				}
@@ -352,31 +369,31 @@ func setLegacyServiceField(parsedConfig *config.Config, service string, index in
 	case "name":
 		parsedValue, err := parseLegacyYAMLString(rawValue)
 		if err != nil {
-			return err
+			return fmt.Errorf("name: %w", err)
 		}
 		serviceConfig.Name = parsedValue
 	case "url":
 		parsedValue, err := parseLegacyYAMLString(rawValue)
 		if err != nil {
-			return err
+			return fmt.Errorf("url: %w", err)
 		}
 		serviceConfig.URL = parsedValue
 	case "api_key":
 		parsedValue, err := parseLegacyYAMLString(rawValue)
 		if err != nil {
-			return err
+			return fmt.Errorf("api_key: %w", err)
 		}
 		serviceConfig.APIKey = parsedValue
 	case "apikey":
 		parsedValue, err := parseLegacyYAMLString(rawValue)
 		if err != nil {
-			return err
+			return fmt.Errorf("apikey: %w", err)
 		}
 		serviceConfig.APIKey = parsedValue
 	case "token":
 		parsedValue, err := parseLegacyYAMLString(rawValue)
 		if err != nil {
-			return err
+			return fmt.Errorf("token: %w", err)
 		}
 		serviceConfig.Token = parsedValue
 	case "enabled":
@@ -393,8 +410,12 @@ func setLegacyServiceField(parsedConfig *config.Config, service string, index in
 }
 
 func stripLegacyYAMLComment(line string) string {
-	if idx := strings.Index(line, "#"); idx >= 0 {
+	if idx := strings.Index(line, " #"); idx >= 0 {
 		line = line[:idx]
+		return strings.TrimRight(line, " \t")
+	}
+	if strings.HasPrefix(strings.TrimSpace(line), "#") {
+		return ""
 	}
 	return line
 }
@@ -418,7 +439,7 @@ func splitLegacyYAMLKeyValue(content string) (string, string, bool) {
 func parseLegacyYAMLString(value string) (string, error) {
 	value = strings.TrimSpace(value)
 	if value == "" {
-		return "", fmt.Errorf("empty string")
+		return "", fmt.Errorf("empty value")
 	}
 	// Strip surrounding quotes
 	value = strings.Trim(value, "\"'")
