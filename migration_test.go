@@ -150,6 +150,66 @@ func TestMigrateLegacyConfigFromPaths_ExistingJSONFails(t *testing.T) {
 	}
 }
 
+func TestStripYAMLComment_LeavesHashInValues(t *testing.T) {
+	// Tokens and URLs that contain # must survive comment stripping.
+	parsed, _, err := parseLegacyYAMLConfig([]byte(`services:
+  plex:
+    - name: Main
+      url: http://plex:32400
+      token: "abc#123"
+      enabled: true
+`))
+	if err != nil {
+		t.Fatalf("parse failed: %v", err)
+	}
+	if len(parsed.Services.Plex) != 1 {
+		t.Fatalf("expected 1 plex instance, got %d", len(parsed.Services.Plex))
+	}
+	if parsed.Services.Plex[0].Token != "abc#123" {
+		t.Fatalf("expected token 'abc#123' to survive, got %q", parsed.Services.Plex[0].Token)
+	}
+}
+
+func TestStripYAMLComment_StripsInlineComment(t *testing.T) {
+	parsed, _, err := parseLegacyYAMLConfig([]byte(`services:
+  sonarr:
+    - name: HD
+      url: http://sonarr:8989  # the main instance
+      api_key: sonarr-key
+      enabled: true
+`))
+	if err != nil {
+		t.Fatalf("parse failed: %v", err)
+	}
+	if len(parsed.Services.Sonarr) != 1 {
+		t.Fatalf("expected 1 sonarr instance, got %d", len(parsed.Services.Sonarr))
+	}
+	if parsed.Services.Sonarr[0].URL != "http://sonarr:8989" {
+		t.Fatalf("expected URL without inline comment, got %q", parsed.Services.Sonarr[0].URL)
+	}
+}
+
+func TestParseLegacyYAMLConfig_FullLineComment(t *testing.T) {
+	parsed, _, err := parseLegacyYAMLConfig([]byte(`# This is a full-line comment
+services:
+  plex:
+    - name: Main
+      url: http://plex:32400
+      # inline comment inside service block
+      token: plex-token
+      enabled: true
+`))
+	if err != nil {
+		t.Fatalf("parse failed: %v", err)
+	}
+	if len(parsed.Services.Plex) != 1 {
+		t.Fatalf("expected 1 plex instance, got %d", len(parsed.Services.Plex))
+	}
+	if parsed.Services.Plex[0].Token != "plex-token" {
+		t.Fatalf("expected token 'plex-token', got %q", parsed.Services.Plex[0].Token)
+	}
+}
+
 func TestMigrateLegacyConfigFromPaths_MissingLegacyReturnsSentinel(t *testing.T) {
 	tempDir := t.TempDir()
 	_, _, _, err := migrateLegacyConfigFromPaths(
