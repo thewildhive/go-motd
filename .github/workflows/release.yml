@@ -214,7 +214,8 @@ jobs:
           # Push the tag only — branch protection rules apply to
           # refs/heads/*, not refs/tags/*, so GITHUB_TOKEN can push
           # tags even when branches are protected.
-          git push origin "refs/tags/${{ steps.version.outputs.tag }}"
+          # Use --force to overwrite any stale tag from a failed run.
+          git push origin --force "refs/tags/${{ steps.version.outputs.tag }}"
 
       - name: Create GitHub Release
         if: steps.version.outputs.needed == 'true'
