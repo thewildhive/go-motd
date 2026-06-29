@@ -1,8 +1,29 @@
 ## [v1.7.1] - 2026-06-29
 
+- fix: guard release version collisions in version resolver (e9445dd)
+- fix: avoid release collision failures via tag collision resolver (80e9c17)
+- fix: handle empty collision fallback for non-semver tags (4f06f90)
+- fix: guard version collisions in release tagging (a439333)
 
 ## [v1.7.0] - 2026-06-29
 
+- fix: align release changelog flow with commit-and-push (6b68874)
+- fix: normalize windows wmic disk drive IDs (9a27847)
+- fix: correct windows disk parser test fixture (cde28e7)
+- fix: make windows-path tests platform-agnostic (4a3e760)
+- feat: add compose status and diagnostics (960d2f7)
+- feat: add build date to version output (57419f3)
+- fix: allow overwriting orphaned release tag with --force (37e8ab4)
+- fix: update Ed25519 public key (previous key was in wrong format) (dbf4b48)
+- fix: pin svu to v2.2.0 (v2.0.2 doesn't exist) (13108d6)
+- fix: remediate engineering backlog — security hardening, bug fixes, and test improvements (9af4818)
+- fix: add GOCACHE env to release workflow to prevent cache trim failure (6a10ac6)
+- fix: use --force tag push, remove PAT requirement (d9a232a)
+- fix: push only the release tag, not main (9085558)
+- fix: use PAT-authenticated push in release workflow to bypass branch protection (d19a751)
+- fix: harden YAML parser - fix #-in-token bug, document limitations (03a2b4d)
+- refactor: introduce Service interface, collapse 5x dispatch in media and configure (8a1bad0)
+- refactor: quick wins — build-tag split, dedup, configure foot-gun fix, subcommand routing, Windows quoting (0a1d8c7)
 
 ## [v1.6.0] - 2026-05-29
 

@@ -155,12 +155,12 @@ jobs:
             if [ -n "$PREV" ]; then
               git log "$PREV"..HEAD --no-merges \
                 --format='- %s (%h)' \
-                --grep='^feat:\\|^fix:\\|^perf:\\|^refactor:\\|^build:\\|^docs:' \
+                --grep='^feat:\|^fix:\|^perf:\|^refactor:\|^build:\|^docs:' \
                 2>/dev/null || true
             else
               git log HEAD --no-merges \
                 --format='- %s (%h)' \
-                --grep='^feat:\\|^fix:\\|^perf:\\|^refactor:\\|^build:\\|^docs:' \
+                --grep='^feat:\|^fix:\|^perf:\|^refactor:\|^build:\|^docs:' \
                 2>/dev/null || true
             fi
             printf '\n'
@@ -243,12 +243,12 @@ jobs:
             if [ -n "$PREV_TAG" ]; then
               git log "$PREV_TAG"..HEAD --no-merges \
                 --format='- %s (%h)' \
-                --grep='^feat:\\|^fix:\\|^perf:\\|^refactor:\\|^build:\\|^docs:' \
+                --grep='^feat:\|^fix:\|^perf:\|^refactor:\|^build:\|^docs:' \
                 2>/dev/null || true
             else
               git log HEAD --no-merges \
                 --format='- %s (%h)' \
-                --grep='^feat:\\|^fix:\\|^perf:\\|^refactor:\\|^build:\\|^docs:' \
+                --grep='^feat:\|^fix:\|^perf:\|^refactor:\|^build:\|^docs:' \
                 2>/dev/null || true
             fi
             printf '\n'
