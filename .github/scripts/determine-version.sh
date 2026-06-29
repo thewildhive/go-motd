@@ -26,7 +26,7 @@ bump_patch_version() {
   local version="${tag#v}"
 
   if ! echo "$version" | grep -Eq '^([0-9]+\.){2}[0-9]+$'; then
-    echo "$tag"
+    echo ""
     return
   fi
 
@@ -48,18 +48,40 @@ resolve_version_collision() {
   local tag="$1"
   local head
   local existing
+  local next_tag
+  local max_attempts=128
+  local attempt=0
 
   head=$(git rev-parse HEAD)
 
-  while git rev-parse -q --verify "refs/tags/${tag}^{commit}" >/dev/null 2>&1; do
+  while true; do
+    if ! git rev-parse -q --verify "refs/tags/${tag}^{commit}" >/dev/null 2>&1; then
+      printf '%s\n' "$tag"
+      return
+    fi
+
     existing=$(git rev-parse "${tag}^{commit}")
     if [ "$existing" = "$head" ]; then
-      break
+      printf '\n'
+      return
     fi
-    tag=$(bump_patch_version "$tag")
-  done
 
-  printf '%s\n' "$tag"
+    next_tag=$(bump_patch_version "$tag")
+    if [ -z "$next_tag" ]; then
+      echo "warning: could not advance non-semver collision tag '${tag}', skipping release" >&2
+      printf '\n'
+      return
+    fi
+
+    attempt=$((attempt + 1))
+    if [ "$attempt" -gt "$max_attempts" ]; then
+      echo "warning: exceeded ${max_attempts} collision increments for ${tag}, skipping release" >&2
+      printf '\n'
+      return
+    fi
+
+    tag="$next_tag"
+  done
 }
 
 CURRENT_TAG=$(svu current 2>/dev/null || echo "v0.0.0")
