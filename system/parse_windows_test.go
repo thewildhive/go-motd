@@ -139,6 +139,12 @@ func TestParseWindowsIntOutputRejectsMalformedInput(t *testing.T) {
 	}
 }
 
+func TestParseWindowsIntOutputRejectsEmptyLine(t *testing.T) {
+	if _, ok := parseWindowsIntOutput([]byte("\r\n")); ok {
+		t.Fatal("expected empty line to fail")
+	}
+}
+
 func TestParseWindowsMemoryKB(t *testing.T) {
 	total, free, ok := parseWindowsMemoryKB([]byte("33554432,16777216"))
 	if !ok || total != 33554432 || free != 16777216 {
@@ -166,7 +172,7 @@ func TestParseWindowsDiskCSV(t *testing.T) {
 }
 
 func TestParseWindowsDiskWMIC(t *testing.T) {
-	disks := parseWindowsDiskWMIC([]byte("DeviceID=C:\nFreeSpace=250\nSize=1000\n\nDeviceID=D:\nFreeSpace=1000\nSize=2000\n"))
+	disks := parseWindowsDiskWMIC([]byte("DeviceID=C:\\nFreeSpace=250\nSize=1000\n\nDeviceID=D:\\nFreeSpace=1000\nSize=2000\n"))
 	if len(disks) != 2 {
 		t.Fatalf("expected 2 disks, got %d", len(disks))
 	}
