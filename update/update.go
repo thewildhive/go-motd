@@ -50,7 +50,7 @@ type GitHubRelease struct {
 //	openssl pkey -in public.pem -pubin -outform DER | tail -c 32 | xxd -p
 //
 // Replace the placeholder below with the hex-encoded public key.
-const checksumsPublicKeyHex = "e610845831cfecdefa89e88a976483f1d7d1d1bbc2b29442617deedab9c0398e"
+const checksumsPublicKeyHex = "77c6d63c22d1e65b1793563b48c2ad00117114f581476ced38b3228b02f99831"
 
 var (
 	errMissingSig       = errors.New("checksums.txt.sig not found in release assets")
