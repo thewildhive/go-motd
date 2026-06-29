@@ -247,14 +247,14 @@ func parseWindowsDiskWMIC(output []byte) []windowsDiskInfo {
 	disks := make([]windowsDiskInfo, 0)
 	current := make(map[string]string)
 	flush := func() {
-		name := current["deviceid"]
+		name := strings.TrimSuffix(strings.TrimSpace(current["deviceid"]), "\\")
 		freeValue := current["freespace"]
 		sizeValue := current["size"]
 		if name == "" || freeValue == "" || sizeValue == "" {
 			return
 		}
-		free, freeErr := strconv.ParseUint(freeValue, 10, 64)
-		size, sizeErr := strconv.ParseUint(sizeValue, 10, 64)
+		free, freeErr := strconv.ParseUint(strings.TrimSpace(freeValue), 10, 64)
+		size, sizeErr := strconv.ParseUint(strings.TrimSpace(sizeValue), 10, 64)
 		if freeErr == nil && sizeErr == nil {
 			disks = append(disks, windowsDiskInfo{
 				Drive:      name,
