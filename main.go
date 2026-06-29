@@ -14,7 +14,10 @@ import (
 	"motd/update"
 )
 
-var VERSION = "dev"
+var (
+	VERSION   = "dev"
+	BUILDDATE = "unknown"
+)
 
 const curlTimeout = 5 * time.Second
 
@@ -37,7 +40,7 @@ func main() {
 	}
 
 	if *showVersion {
-		fmt.Printf("MOTD Script v%s\n", VERSION)
+		fmt.Printf("MOTD Script v%s (Built %s)\n", VERSION, BUILDDATE)
 		return
 	}
 

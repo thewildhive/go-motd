@@ -5,7 +5,8 @@ BIN_DIR=bin
 GO=go
 VERSION?=dev
 GO_BUILD_FLAGS=-buildvcs=false
-LDFLAGS=-ldflags="-s -w -X main.VERSION=$(VERSION)"
+BUILDDATE?=$(shell date -u +%d%m%y)
+LDFLAGS=-ldflags="-s -w -X main.VERSION=$(VERSION) -X main.BUILDDATE=$(BUILDDATE)"
 INSTALL_PATH=/usr/local/bin
 
 .PHONY: all build build-optimized clean test smoke check install uninstall cross-compile checksums package release svu-version help
@@ -16,7 +17,7 @@ all: build-optimized
 build:
 	@echo "Building $(BINARY_NAME)..."
 	@mkdir -p $(BIN_DIR)
-	$(GO) build $(GO_BUILD_FLAGS) -ldflags="-X main.VERSION=$(VERSION)" -o $(BIN_DIR)/$(BINARY_NAME) .
+	$(GO) build $(GO_BUILD_FLAGS) -ldflags="-X main.VERSION=$(VERSION) -X main.BUILDDATE=$(BUILDDATE)" -o $(BIN_DIR)/$(BINARY_NAME) .
 	@echo "Build complete: $(BIN_DIR)/$(BINARY_NAME)"
 
 # Build optimized binary (smaller, faster)
@@ -97,10 +98,10 @@ package: clean
 		os_name=$$(echo $$os | cut -d- -f1); \
 		arch=$$(echo $$os | cut -d- -f2); \
 		if [ "$$os_name" = "windows" ]; then \
-			GOOS=$$os_name GOARCH=$$arch $(GO) build $(GO_BUILD_FLAGS) -ldflags="-s -w -X main.VERSION=$$VERSION" -o $(BIN_DIR)/release/motd-$$os.exe .; \
+			GOOS=$$os_name GOARCH=$$arch $(GO) build $(GO_BUILD_FLAGS) -ldflags="-s -w -X main.VERSION=$$VERSION -X main.BUILDDATE=$$(date -u +%d%m%y)" -o $(BIN_DIR)/release/motd-$$os.exe .; \
 			cd $(BIN_DIR)/release && zip motd-$$VERSION-$$os.zip motd-$$os.exe; \
 		else \
-			GOOS=$$os_name GOARCH=$$arch $(GO) build $(GO_BUILD_FLAGS) -ldflags="-s -w -X main.VERSION=$$VERSION" -o $(BIN_DIR)/release/motd-$$os .; \
+			GOOS=$$os_name GOARCH=$$arch $(GO) build $(GO_BUILD_FLAGS) -ldflags="-s -w -X main.VERSION=$$VERSION -X main.BUILDDATE=$$(date -u +%d%m%y)" -o $(BIN_DIR)/release/motd-$$os .; \
 			cd $(BIN_DIR)/release && tar -czf motd-$$VERSION-$$os.tar.gz motd-$$os; \
 		fi; \
 		cd -; \
