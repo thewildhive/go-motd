@@ -172,7 +172,14 @@ func TestParseWindowsDiskCSV(t *testing.T) {
 }
 
 func TestParseWindowsDiskWMIC(t *testing.T) {
-	disks := parseWindowsDiskWMIC([]byte("DeviceID=C:\\nFreeSpace=250\nSize=1000\n\nDeviceID=D:\\nFreeSpace=1000\nSize=2000\n"))
+	disks := parseWindowsDiskWMIC([]byte(`DeviceID=C:\
+FreeSpace=250
+Size=1000
+
+DeviceID=D:\
+FreeSpace=1000
+Size=2000
+`))
 	if len(disks) != 2 {
 		t.Fatalf("expected 2 disks, got %d", len(disks))
 	}
