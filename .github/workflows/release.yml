@@ -173,12 +173,14 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p release
+          BUILDDATE=$(date -u +%d%m%y)
+          LDFLAGS="-s -w -X main.VERSION=${RELEASE_VERSION} -X main.BUILDDATE=${BUILDDATE}"
 
-          GOOS=linux GOARCH=amd64 go build -buildvcs=false -ldflags="-s -w -X main.VERSION=${RELEASE_VERSION}" -o release/motd-linux-amd64 .
-          GOOS=linux GOARCH=arm64 go build -buildvcs=false -ldflags="-s -w -X main.VERSION=${RELEASE_VERSION}" -o release/motd-linux-arm64 .
-          GOOS=darwin GOARCH=amd64 go build -buildvcs=false -ldflags="-s -w -X main.VERSION=${RELEASE_VERSION}" -o release/motd-darwin-amd64 .
-          GOOS=darwin GOARCH=arm64 go build -buildvcs=false -ldflags="-s -w -X main.VERSION=${RELEASE_VERSION}" -o release/motd-darwin-arm64 .
-          GOOS=windows GOARCH=amd64 go build -buildvcs=false -ldflags="-s -w -X main.VERSION=${RELEASE_VERSION}" -o release/motd-windows-amd64.exe .
+          GOOS=linux GOARCH=amd64 go build -buildvcs=false -ldflags="${LDFLAGS}" -o release/motd-linux-amd64 .
+          GOOS=linux GOARCH=arm64 go build -buildvcs=false -ldflags="${LDFLAGS}" -o release/motd-linux-arm64 .
+          GOOS=darwin GOARCH=amd64 go build -buildvcs=false -ldflags="${LDFLAGS}" -o release/motd-darwin-amd64 .
+          GOOS=darwin GOARCH=arm64 go build -buildvcs=false -ldflags="${LDFLAGS}" -o release/motd-darwin-arm64 .
+          GOOS=windows GOARCH=amd64 go build -buildvcs=false -ldflags="${LDFLAGS}" -o release/motd-windows-amd64.exe .
 
           cd release
           sha256sum motd-linux-amd64 motd-linux-arm64 motd-darwin-amd64 motd-darwin-arm64 motd-windows-amd64.exe > checksums.txt
