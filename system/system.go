@@ -43,12 +43,14 @@ func ShowDocker(debug bool) {
 // ConfigAccessor provides system-relevant config values
 // without exposing the full Config struct to system functions.
 type ConfigAccessor struct {
+	ComposeDir       string
 	TankMount        string
 	NetworkInterface string
 }
 
 func ConfigAccessorFrom(cfg config.Config) ConfigAccessor {
 	return ConfigAccessor{
+		ComposeDir:       cfg.System.ComposeDir,
 		TankMount:        cfg.System.TankMount,
 		NetworkInterface: cfg.System.Network.Interface,
 	}

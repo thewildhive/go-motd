@@ -119,6 +119,32 @@ func TestParseWindowsCPUPercent(t *testing.T) {
 	}
 }
 
+func TestParseWindowsCPUPercentPowerShellOutput(t *testing.T) {
+	percent, ok := parseWindowsCPUPercent([]byte("23\r\n"))
+	if !ok || percent != 23 {
+		t.Fatalf("unexpected CPU percent: %d ok=%v", percent, ok)
+	}
+}
+
+func TestParseWindowsIntOutput(t *testing.T) {
+	count, ok := parseWindowsIntOutput([]byte("143\r\n"))
+	if !ok || count != 143 {
+		t.Fatalf("unexpected process count: %d ok=%v", count, ok)
+	}
+}
+
+func TestParseWindowsIntOutputRejectsMalformedInput(t *testing.T) {
+	if _, ok := parseWindowsIntOutput([]byte("not-a-number")); ok {
+		t.Fatal("expected malformed integer output to fail")
+	}
+}
+
+func TestParseWindowsIntOutputRejectsEmptyLine(t *testing.T) {
+	if _, ok := parseWindowsIntOutput([]byte("\r\n")); ok {
+		t.Fatal("expected empty line to fail")
+	}
+}
+
 func TestParseWindowsMemoryKB(t *testing.T) {
 	total, free, ok := parseWindowsMemoryKB([]byte("33554432,16777216"))
 	if !ok || total != 33554432 || free != 16777216 {
@@ -146,7 +172,14 @@ func TestParseWindowsDiskCSV(t *testing.T) {
 }
 
 func TestParseWindowsDiskWMIC(t *testing.T) {
-	disks := parseWindowsDiskWMIC([]byte("DeviceID=C:\nFreeSpace=250\nSize=1000\n\nDeviceID=D:\nFreeSpace=1000\nSize=2000\n"))
+	disks := parseWindowsDiskWMIC([]byte(`DeviceID=C:\
+FreeSpace=250
+Size=1000
+
+DeviceID=D:\
+FreeSpace=1000
+Size=2000
+`))
 	if len(disks) != 2 {
 		t.Fatalf("expected 2 disks, got %d", len(disks))
 	}

@@ -12,7 +12,7 @@ import (
 
 const DotLabelWidth = 22
 
-const (
+var (
 	Red     = "\033[0;31m"
 	Green   = "\033[0;32m"
 	Yellow  = "\033[0;33m"
@@ -22,6 +22,27 @@ const (
 	Bold    = "\033[1m"
 	Reset   = "\033[0m"
 )
+
+var defaultColors = map[*string]string{
+	&Red:     Red,
+	&Green:   Green,
+	&Yellow:  Yellow,
+	&Blue:    Blue,
+	&Magenta: Magenta,
+	&Cyan:    Cyan,
+	&Bold:    Bold,
+	&Reset:   Reset,
+}
+
+func SetColorEnabled(enabled bool) {
+	for ptr, value := range defaultColors {
+		if enabled {
+			*ptr = value
+		} else {
+			*ptr = ""
+		}
+	}
+}
 
 func DebugLog(debug bool, msg string, args ...interface{}) {
 	if debug {

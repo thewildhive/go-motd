@@ -224,7 +224,7 @@ func TestShowMediaServicesStableOrder(t *testing.T) {
 		fmt.Fprint(buf, "dummy output to check ordering\n")
 	}
 
-	results := collectMediaStatuses(AllServices(cfg), client, false)
+	results := collectMediaStatuses(AllServices(cfg, nil), client, false)
 	if len(results) == 0 {
 		t.Fatal("expected media status results")
 	}
@@ -295,25 +295,25 @@ func TestHasMediaServicesRequiresURLAndCredentials(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := config.Config{}
 			tt.apply(&cfg, tt.missingURL)
-			if HasMediaServices(cfg) {
+			if HasMediaServices(cfg, nil) {
 				t.Fatal("expected media services to be disabled without URL")
 			}
 
 			cfg = config.Config{}
 			tt.apply(&cfg, tt.missingAuth)
-			if HasMediaServices(cfg) {
+			if HasMediaServices(cfg, nil) {
 				t.Fatal("expected media services to be disabled without credentials")
 			}
 
 			cfg = config.Config{}
 			tt.apply(&cfg, tt.disabled)
-			if HasMediaServices(cfg) {
+			if HasMediaServices(cfg, nil) {
 				t.Fatal("expected media services to be disabled when service is disabled")
 			}
 
 			cfg = config.Config{}
 			tt.apply(&cfg, tt.ready)
-			if !HasMediaServices(cfg) {
+			if !HasMediaServices(cfg, nil) {
 				t.Fatal("expected media services to be enabled with URL and credentials")
 			}
 		})
@@ -400,7 +400,7 @@ func TestIsValidURL(t *testing.T) {
 	}
 
 	for _, tt := range tests {
-		if got := isValidURL(tt.rawURL); got != tt.want {
+		if got := IsValidURL(tt.rawURL); got != tt.want {
 			t.Fatalf("isValidURL(%q) = %v, want %v", tt.rawURL, got, tt.want)
 		}
 	}
@@ -445,12 +445,12 @@ func TestHasMediaServicesRequiresValidURL(t *testing.T) {
 	cfg.Services.Plex = []config.ServiceConfig{{
 		Name: "BadURL", URL: "http//bad", Token: "secret", Enabled: true,
 	}}
-	if HasMediaServices(cfg) {
+	if HasMediaServices(cfg, nil) {
 		t.Fatal("expected HasMediaServices to reject malformed URL")
 	}
 
 	cfg.Services.Plex[0].URL = "http://plex:32400"
-	if !HasMediaServices(cfg) {
+	if !HasMediaServices(cfg, nil) {
 		t.Fatal("expected HasMediaServices to accept valid URL")
 	}
 }

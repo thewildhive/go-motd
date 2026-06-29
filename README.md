@@ -42,8 +42,13 @@ Options:
   -config PATH    Load config from a specific JSON file
   -migrate        Migrate legacy config.yml/config.yaml to JSON and exit
   -no-config      Skip config loading and show system information only
+  -json           Output machine-readable JSON
+  -no-color       Disable ANSI colors (also honors NO_COLOR)
+  -services LIST  Only show selected media services (plex,jellyfin,sonarr,radarr,seerr)
 
 Commands:
+  configure       Create or edit the config file
+  check-config    Validate configuration and print diagnostics
   self-update     Update to the latest version from GitHub releases
   self-update --force    Force update to latest version (even if current)
 ```
@@ -58,7 +63,7 @@ Supported config paths (priority order):
 
 Use `-config /path/to/config.json` to load a specific file, or `-no-config` to force system-only output.
 
-Create a config file only when you want media integrations or custom system paths such as `tank_mount` or a fixed network interface.
+Create a config file only when you want media integrations or custom system paths such as `compose_dir`, `tank_mount`, or a fixed network interface. When `compose_dir` points at directories containing Compose files, `motd` shows a best-effort Docker Compose summary such as `All containers online` or `X of Y online`; missing or unavailable Compose data is skipped silently.
 
 If a legacy YAML config is detected (`config.yml`/`config.yaml`), `motd` exits with a migration message. Run `motd -migrate` to write the matching `config.json` next to the legacy file. With `-config /path/to/config.json`, migration looks for `/path/to/config.yml` or `/path/to/config.yaml` and writes the specified JSON path.
 
@@ -120,7 +125,7 @@ Legacy Organizr entries are not migrated because Organizr support was removed. T
 }
 ```
 
-Use `config.json.sample` as the complete reference template. Media services are opt-in; each configured instance must be enabled and include both a URL and token/API key.
+Use `config.json.sample` as the complete reference template. Media services are opt-in; each configured instance must be enabled and include both a URL and token/API key. Run `motd check-config` to validate configuration without treating a missing config as an error.
 
 ## System Information
 

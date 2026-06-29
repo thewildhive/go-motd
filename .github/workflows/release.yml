@@ -216,6 +216,22 @@ jobs:
           zip "motd-${RELEASE_VERSION}-windows-amd64.zip" motd-windows-amd64.exe
           sha256sum *.tar.gz *.zip > archive-checksums.txt
 
+      - name: Sign archive-checksums.txt
+        if: ${{ steps.version.outputs.needed == 'true' || steps.manual_release.outputs.released == 'true' }}
+        env:
+          SIGNING_KEY: ${{ secrets.SIGNING_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "$SIGNING_KEY" ]; then
+            echo "SIGNING_PRIVATE_KEY secret is not set — skipping archive checksums signing"
+            exit 1
+          fi
+          KEY_FILE=$(mktemp)
+          chmod 600 "$KEY_FILE"
+          printf '%s' "$SIGNING_KEY" > "$KEY_FILE"
+          openssl pkeyutl -sign -inkey "$KEY_FILE" -rawin -in release/archive-checksums.txt -out release/archive-checksums.txt.sig
+          rm -f "$KEY_FILE"
+
       - name: Update CHANGELOG.md
         if: steps.version.outputs.needed == 'true'
         env:
@@ -288,6 +304,7 @@ jobs:
             release/checksums.txt
             release/checksums.txt.sig
             release/archive-checksums.txt
+            release/archive-checksums.txt.sig
           fail_on_unmatched_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

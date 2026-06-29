@@ -111,6 +111,25 @@ jobs:
           set -euo pipefail
           GOOS=${{ matrix.os }} GOARCH=${{ matrix.arch }} go build ./...
 
+  windows-tests:
+    name: Windows tests
+    needs: changes
+    if: needs.changes.outputs.go == 'true'
+    runs-on: windows-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Run Windows tests
+        run: go test -count=1 ./...
+
   required:
     name: Required checks
     if: always()
@@ -118,12 +137,13 @@ jobs:
       - changes
       - go
       - cross-platform
+      - windows-tests
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
       - name: Ensure required checks passed
         run: |
-          if [ "${{ needs.changes.result }}" = "failure" ] || [ "${{ needs.go.result }}" = "failure" ] || [ "${{ needs.cross-platform.result }}" = "failure" ]; then
+          if [ "${{ needs.changes.result }}" = "failure" ] || [ "${{ needs.go.result }}" = "failure" ] || [ "${{ needs.cross-platform.result }}" = "failure" ] || [ "${{ needs.windows-tests.result }}" = "failure" ]; then
             echo "One or more required checks failed"
             exit 1
           fi
