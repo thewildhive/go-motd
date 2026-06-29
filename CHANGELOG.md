@@ -1,3 +1,6 @@
+## [v1.7.0] - 2026-06-29
+
+
 ## [v1.6.0] - 2026-05-29
 
 - feat: check write access before self-update with helpful error (e6d4a0e)
