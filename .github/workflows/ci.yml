@@ -2,11 +2,21 @@ name: CI
 
 on:
   pull_request:
-    branches:
-      - main
+    branches: [main]
+    paths-ignore:
+      - '*.md'
+      - 'docs/**'
+      - 'testdata/**'
+      - 'LICENSE'
+      - 'NOTICE'
   push:
-    branches:
-      - main
+    branches: [main]
+    paths-ignore:
+      - '*.md'
+      - 'docs/**'
+      - 'testdata/**'
+      - 'LICENSE'
+      - 'NOTICE'
 
 permissions:
   contents: read
@@ -16,10 +26,33 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  test:
-    name: Test
+  changes:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 5
+    outputs:
+      go: ${{ steps.changed.outputs.go }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Detect changed paths
+        id: changed
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            go:
+              - '**/*.go'
+              - 'go.mod'
+              - 'go.sum'
+              - '.github/scripts/**'
+              - '.github/workflows/ci.yml'
+
+  go:
+    name: Go checks
+    needs: changes
+    if: needs.changes.outputs.go == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - name: Checkout code
         uses: actions/checkout@v6
@@ -30,7 +63,9 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: Verify formatting
+      - name: Run go checks
+        env:
+          GOCACHE: /tmp/go-build-cache
         run: |
           set -euo pipefail
           UNFORMATTED="$(gofmt -l .)"
@@ -39,26 +74,56 @@ jobs:
             echo "$UNFORMATTED"
             exit 1
           fi
-
-      - name: Run quality checks
-        run: |
-          set -euo pipefail
           go vet ./...
-          go test -count=1 ./...
+          go test -race -count=1 ./...
           go build -buildvcs=false -o /tmp/motd-test .
           /tmp/motd-test -h
-        # Isolate the Go build cache to avoid spurious cache trim failures
-        # on runner images where the shared cache directory is not writable.
+
+  cross-platform:
+    name: Cross-platform build
+    needs: changes
+    if: needs.changes.outputs.go == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: windows, arch: amd64 }
+          - { os: darwin, arch: amd64 }
+          - { os: darwin, arch: arm64 }
+          - { os: linux, arch: amd64 }
+          - { os: linux, arch: arm64 }
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Cross-platform build
         env:
           GOCACHE: /tmp/go-build-cache
-
-      - name: Cross-platform compilation check
         run: |
           set -euo pipefail
-          echo "=== Cross-compiling for all targets ==="
-          GOOS=windows GOARCH=amd64 go build ./...
-          echo "  windows/amd64: OK"
-          GOOS=darwin GOARCH=amd64 go build ./...
-          echo "  darwin/amd64:  OK"
-          GOOS=darwin GOARCH=arm64 go build ./...
-          echo "  darwin/arm64:  OK"
+          GOOS=${{ matrix.os }} GOARCH=${{ matrix.arch }} go build ./...
+
+  required:
+    name: Required checks
+    if: always()
+    needs:
+      - changes
+      - go
+      - cross-platform
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - name: Ensure required checks passed
+        run: |
+          if [ "${{ needs.changes.result }}" = "failure" ] || [ "${{ needs.go.result }}" = "failure" ] || [ "${{ needs.cross-platform.result }}" = "failure" ]; then
+            echo "One or more required checks failed"
+            exit 1
+          fi
