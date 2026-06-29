@@ -2,7 +2,6 @@ package system
 
 import (
 	"fmt"
-	"os/exec"
 	"strings"
 	"time"
 
@@ -23,7 +22,11 @@ func ShowDocker(debug bool) {
 		return
 	}
 
-	output, err := exec.Command("docker", "ps", "-q").Output()
+	cmd, err := util.SafeCommand("docker", "ps", "-q")
+	if err != nil {
+		return
+	}
+	output, err := cmd.Output()
 	if err != nil {
 		return
 	}

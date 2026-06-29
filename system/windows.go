@@ -4,7 +4,6 @@ package system
 
 import (
 	"fmt"
-	"os/exec"
 	"strconv"
 	"strings"
 	"time"
@@ -33,14 +32,21 @@ func ShowOS(cfg ConfigAccessor, debug bool) {
 
 func getWindowsOSInfo() (windowsOSInfo, bool) {
 	psCommand := "$os = Get-CimInstance Win32_OperatingSystem; $cv = Get-ItemProperty 'HKLM:\\SOFTWARE\\Microsoft\\Windows NT\\CurrentVersion'; $build = [string]$os.BuildNumber; if ($null -ne $cv.UBR) { $build = '{0}.{1}' -f $os.BuildNumber,$cv.UBR }; '{0}|{1}|{2}' -f $os.Caption,$os.BuildNumber,$build"
-	output, err := exec.Command("powershell", "-NoProfile", "-Command", psCommand).Output()
-	if err == nil {
-		if info, ok := parseWindowsOSPowerShell(output); ok {
-			return info, true
+	cmd, cmdErr := util.SafeCommand("powershell", "-NoProfile", "-Command", psCommand)
+	if cmdErr == nil {
+		output, err := cmd.Output()
+		if err == nil {
+			if info, ok := parseWindowsOSPowerShell(output); ok {
+				return info, true
+			}
 		}
 	}
 
-	output, err = exec.Command("wmic", "os", "get", "Caption,BuildNumber", "/value").Output()
+	cmd, cmdErr = util.SafeCommand("wmic", "os", "get", "Caption,BuildNumber", "/value")
+	if cmdErr != nil {
+		return windowsOSInfo{}, false
+	}
+	output, err := cmd.Output()
 	if err != nil {
 		return windowsOSInfo{}, false
 	}
@@ -60,20 +66,27 @@ func ShowUptime(cfg ConfigAccessor, debug bool) {
 }
 
 func getWindowsBootTime() (time.Time, bool) {
-	output, err := exec.Command("powershell", "-NoProfile", "-Command", "(Get-CimInstance Win32_OperatingSystem).LastBootUpTime").Output()
-	if err == nil {
-		if t, ok := parseWMICDateTime(strings.TrimSpace(string(output))); ok {
-			return t, true
+	cmd, cmdErr := util.SafeCommand("powershell", "-NoProfile", "-Command", "(Get-CimInstance Win32_OperatingSystem).LastBootUpTime")
+	if cmdErr == nil {
+		output, err := cmd.Output()
+		if err == nil {
+			if t, ok := parseWMICDateTime(strings.TrimSpace(string(output))); ok {
+				return t, true
+			}
 		}
 	}
 
-	output, err = exec.Command("wmic", "os", "get", "LastBootUpTime", "/value").Output()
+	cmd, cmdErr = util.SafeCommand("wmic", "os", "get", "LastBootUpTime", "/value")
+	if cmdErr != nil {
+		return time.Time{}, false
+	}
+	output, err := cmd.Output()
 	if err != nil {
 		return time.Time{}, false
 	}
 
-	if output, ok := parseWMICValue(output, "LastBootUpTime"); ok {
-		return parseWMICDateTime(strings.TrimSpace(output))
+	if wmiValue, ok := parseWMICValue(output, "LastBootUpTime"); ok {
+		return parseWMICDateTime(strings.TrimSpace(wmiValue))
 	}
 
 	return time.Time{}, false
@@ -90,12 +103,21 @@ func ShowLoad(cfg ConfigAccessor, debug bool) {
 }
 
 func getWindowsCPUPercent() (int, bool) {
-	output, err := exec.Command("powershell", "-NoProfile", "-Command", "(Get-CimInstance Win32_Processor | Measure-Object -Property LoadPercentage -Average).Average").Output()
-	if err == nil {
-		return parseWindowsCPUPercent(output)
+	cmd, cmdErr := util.SafeCommand("powershell", "-NoProfile", "-Command", "(Get-CimInstance Win32_Processor | Measure-Object -Property LoadPercentage -Average).Average")
+	if cmdErr == nil {
+		output, err := cmd.Output()
+		if err == nil {
+			if pct, ok := parseWindowsCPUPercent(output); ok {
+				return pct, true
+			}
+		}
 	}
 
-	output, err = exec.Command("wmic", "cpu", "get", "LoadPercentage", "/value").Output()
+	cmd, cmdErr = util.SafeCommand("wmic", "cpu", "get", "LoadPercentage", "/value")
+	if cmdErr != nil {
+		return 0, false
+	}
+	output, err := cmd.Output()
 	if err != nil {
 		return 0, false
 	}
@@ -116,14 +138,21 @@ func ShowMemory(cfg ConfigAccessor, debug bool) {
 }
 
 func getWindowsMemoryBytes() (uint64, uint64, bool) {
-	output, err := exec.Command("powershell", "-NoProfile", "-Command", "$os = Get-CimInstance Win32_OperatingSystem; '{0},{1}' -f $os.TotalVisibleMemorySize,$os.FreePhysicalMemory").Output()
-	if err == nil {
-		if total, free, ok := parseWindowsMemoryKB(output); ok {
-			return total * 1024, free * 1024, true
+	cmd, cmdErr := util.SafeCommand("powershell", "-NoProfile", "-Command", "$os = Get-CimInstance Win32_OperatingSystem; '{0},{1}' -f $os.TotalVisibleMemorySize,$os.FreePhysicalMemory")
+	if cmdErr == nil {
+		output, err := cmd.Output()
+		if err == nil {
+			if total, free, ok := parseWindowsMemoryKB(output); ok {
+				return total * 1024, free * 1024, true
+			}
 		}
 	}
 
-	output, err = exec.Command("wmic", "os", "get", "TotalVisibleMemorySize,FreePhysicalMemory", "/value").Output()
+	cmd, cmdErr = util.SafeCommand("wmic", "os", "get", "TotalVisibleMemorySize,FreePhysicalMemory", "/value")
+	if cmdErr != nil {
+		return 0, 0, false
+	}
+	output, err := cmd.Output()
 	if err != nil {
 		return 0, 0, false
 	}
@@ -158,12 +187,19 @@ func ShowProcesses(cfg ConfigAccessor, debug bool) {
 }
 
 func getWindowsProcessCount() (int, bool) {
-	output, err := exec.Command("powershell", "-NoProfile", "-Command", "(Get-CimInstance Win32_Process).Count").Output()
-	if err == nil {
-		return countNonEmptyLines(output), true
+	cmd, cmdErr := util.SafeCommand("powershell", "-NoProfile", "-Command", "(Get-CimInstance Win32_Process).Count")
+	if cmdErr == nil {
+		output, err := cmd.Output()
+		if err == nil {
+			return countNonEmptyLines(output), true
+		}
 	}
 
-	output, err = exec.Command("tasklist", "/nh").Output()
+	cmd, cmdErr = util.SafeCommand("tasklist", "/nh")
+	if cmdErr != nil {
+		return 0, false
+	}
+	output, err := cmd.Output()
 	if err != nil {
 		return 0, false
 	}
@@ -186,12 +222,19 @@ func ShowDisk(cfg ConfigAccessor, debug bool) {
 }
 
 func getWindowsDiskInfo() ([]windowsDiskInfo, bool) {
-	output, err := exec.Command("powershell", "-NoProfile", "-Command", "Get-CimInstance Win32_LogicalDisk -Filter 'DriveType=3' | Select-Object DeviceID,Size,FreeSpace | Format-Csv -NoHeader").Output()
-	if err == nil {
-		return parseWindowsDiskCSV(output), true
+	cmd, cmdErr := util.SafeCommand("powershell", "-NoProfile", "-Command", "Get-CimInstance Win32_LogicalDisk -Filter 'DriveType=3' | Select-Object DeviceID,Size,FreeSpace | Format-Csv -NoHeader")
+	if cmdErr == nil {
+		output, err := cmd.Output()
+		if err == nil {
+			return parseWindowsDiskCSV(output), true
+		}
 	}
 
-	output, err = exec.Command("wmic", "logicaldisk", "where", "drivetype=3", "get", "DeviceID,Size,FreeSpace", "/format:csv").Output()
+	cmd, cmdErr = util.SafeCommand("wmic", "logicaldisk", "where", "drivetype=3", "get", "DeviceID,Size,FreeSpace", "/format:csv")
+	if cmdErr != nil {
+		return nil, false
+	}
+	output, err := cmd.Output()
 	if err != nil {
 		return nil, false
 	}
@@ -208,16 +251,23 @@ func ShowTemp(cfg ConfigAccessor, debug bool) {
 		return
 	}
 
-	output, err := exec.Command("powershell", "-NoProfile", "-Command", "Get-CimInstance MSAcpi_ThermalZoneTemperature -Namespace 'root/wmi' | Select-Object -ExpandProperty CurrentTemperature").Output()
-	if err == nil {
-		if temp, ok := parseWindowsTemperature(output); ok {
-			display.DotLabel("CPU Temperature")
-			fmt.Printf("%s%.0f°C%s\n", display.Red, temp, display.Reset)
-			return
+	cmd, cmdErr := util.SafeCommand("powershell", "-NoProfile", "-Command", "Get-CimInstance MSAcpi_ThermalZoneTemperature -Namespace 'root/wmi' | Select-Object -ExpandProperty CurrentTemperature")
+	if cmdErr == nil {
+		output, err := cmd.Output()
+		if err == nil {
+			if temp, ok := parseWindowsTemperature(output); ok {
+				display.DotLabel("CPU Temperature")
+				fmt.Printf("%s%.0f°C%s\n", display.Red, temp, display.Reset)
+				return
+			}
 		}
 	}
 
-	output, err = exec.Command("wmic", "/namespace:\\\\root\\wmi", "path", "MSAcpi_ThermalZoneTemperature", "get", "CurrentTemperature", "/value").Output()
+	cmd, cmdErr = util.SafeCommand("wmic", "/namespace:\\\\root\\wmi", "path", "MSAcpi_ThermalZoneTemperature", "get", "CurrentTemperature", "/value")
+	if cmdErr != nil {
+		return
+	}
+	output, err := cmd.Output()
 	if err != nil {
 		return
 	}

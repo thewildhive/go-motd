@@ -9,6 +9,7 @@ import (
 
 	"motd/config"
 	"motd/display"
+	"motd/media"
 	"motd/system"
 )
 
@@ -201,6 +202,9 @@ func promptString(reader *bufio.Reader, svc *config.ServiceConfig, field, fallba
 	current := fieldValue(svc, field)
 	answer := prompt(reader, "  "+field, current, fallback)
 	setFieldValue(svc, field, answer)
+	if field == "url" && media.IsPlaintextToRemote(answer) {
+		fmt.Printf("  %sWarning: API key/token will be sent in plaintext over HTTP to %s%s\n", display.Yellow, answer, display.Reset)
+	}
 }
 
 // promptCredential is like promptString but masks the current value.

@@ -128,6 +128,24 @@ Use `config.json.sample` as the complete reference template. Media services are 
 
 Windows temperature and bandwidth can be unavailable on many systems because thermal sensors and `vnstat` are not consistently exposed by default.
 
+### Trusted Directories for Optional Tools
+
+Optional tools (docker, vnstat, who, figlet, etc.) are resolved from a restricted set of trusted directories to prevent PATH hijacking in privileged contexts:
+
+| Platform | Trusted Directories |
+|----------|-------------------|
+| Linux | `/usr/bin`, `/usr/sbin`, `/bin`, `/sbin` |
+| macOS | `/usr/bin`, `/usr/sbin`, `/bin`, `/sbin`, `/usr/local/bin`, `/opt/homebrew/bin` |
+| Windows | `C:\Windows\System32`, `C:\Windows\System32\WindowsPowerShell\v1.0` |
+
+If you install optional tools in non-standard paths (e.g., `/snap/bin/docker`, `~/bin/figlet`), create a symlink from a trusted directory:
+
+```bash
+sudo ln -s /snap/bin/docker /usr/bin/docker
+```
+
+Run with `-d` (debug) to see which tools are not found.
+
 ## Seerr Integration
 
 Pending request count is fetched directly from Seerr:
@@ -141,14 +159,27 @@ motd self-update
 motd self-update --force
 ```
 
-Security properties:
-- SHA256 checksum verification
-- HTTPS-only downloads
-- Backup and rollback on Unix update failure
+### Security Model
 
-The Windows updater schedules replacement after the current process exits and keeps a `.backup` file until that replacement script succeeds.
+The self-update mechanism provides defense-in-depth against supply-chain attacks:
 
-Release uploads include raw binaries for `self-update`, human-friendly archives for manual installs, and separate checksum files for raw binaries and archives.
+| Layer | Protection | Breaks If |
+|-------|-----------|-----------|
+| HTTPS | Transport encryption; prevents MITM during download | CA compromise, TLS downgrade |
+| SHA-256 checksums | Detects corruption or tampering of the downloaded binary | Checksum file is also tampered (no origin verification) |
+| Ed25519 signature | Proves `checksums.txt` was published by the maintainer | Private signing key is compromised |
+| Trusted PATH | Prevents `motd self-update` from launching untrusted helper binaries | System trusted directories are writable by attacker |
+
+Operational assumptions:
+- The signing private key is stored as a GitHub repository secret (`SIGNING_PRIVATE_KEY`)
+- The corresponding public key is compiled into the binary (`checksumsPublicKeyHex`)
+- Releases are created by the CI pipeline — manual release uploads bypass signing
+- `motd self-update` requires write access to the binary's directory; use `sudo` or install to `~/.local/bin` if needed
+- Cross-device binary replacement uses a staged copy in the target directory before atomic rename
+
+### Windows Notes
+
+The Windows updater writes a batch script to a random path in `%TEMP%` that schedules replacement after the current process exits. Metacharacters in file paths (`%`, `^`, `&`, `|`, `<`, `>`, `()`) are escaped for batch safety.
 
 ## Installation
 

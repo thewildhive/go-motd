@@ -105,7 +105,7 @@ func migrateLegacyConfigFromPaths(jsonPaths, legacyPaths []string) (string, stri
 	if err := os.MkdirAll(filepath.Dir(jsonPath), 0o755); err != nil {
 		return legacyPath, jsonPath, unsupportedServices, fmt.Errorf("failed to create JSON config directory %s: %w", filepath.Dir(jsonPath), err)
 	}
-	if err := os.WriteFile(jsonPath, jsonData, 0o600); err != nil {
+	if err := config.AtomicWriteFile(jsonPath, jsonData, 0o600); err != nil {
 		return legacyPath, jsonPath, unsupportedServices, fmt.Errorf("failed to write JSON config %s: %w", jsonPath, err)
 	}
 

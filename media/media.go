@@ -4,8 +4,10 @@ import (
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
+	"io"
 	"net/http"
 	"net/url"
+	"sort"
 	"strings"
 	"sync"
 
@@ -13,6 +15,8 @@ import (
 	"motd/display"
 	"motd/util"
 )
+
+const maxMediaResponseSize = 10 << 20 // 10 MB
 
 type Service interface {
 	Name() string
@@ -173,13 +177,28 @@ func collectMediaStatuses(services []Service, client *http.Client, debug bool) [
 		collected = append(collected, result)
 	}
 
-	for i := 1; i < len(collected); i++ {
-		for j := i; j > 0 && collected[j-1].order > collected[j].order; j-- {
-			collected[j-1], collected[j] = collected[j], collected[j-1]
-		}
-	}
+	sort.Slice(collected, func(i, j int) bool {
+		return collected[i].order < collected[j].order
+	})
 
 	return collected
+}
+
+// IsPlaintextToRemote returns true when rawURL uses http:// with a
+// non-loopback host. Callers should warn users about credential exposure.
+func IsPlaintextToRemote(rawURL string) bool {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return false
+	}
+	if u.Scheme != "http" {
+		return false
+	}
+	host := strings.ToLower(u.Hostname())
+	if host == "localhost" || host == "127.0.0.1" || host == "::1" {
+		return false
+	}
+	return true
 }
 
 func isValidURL(rawURL string) bool {
@@ -188,6 +207,15 @@ func isValidURL(rawURL string) bool {
 	}
 	u, err := url.Parse(rawURL)
 	if err != nil || u.Scheme == "" {
+		return false
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return false
+	}
+	if u.Host == "" {
+		return false
+	}
+	if u.User != nil {
 		return false
 	}
 	return true
@@ -236,7 +264,7 @@ func decodeJSONResponse(resp *http.Response, target interface{}) error {
 		return fmt.Errorf("unexpected status %d", resp.StatusCode)
 	}
 
-	decoder := json.NewDecoder(resp.Body)
+	decoder := json.NewDecoder(io.LimitReader(resp.Body, maxMediaResponseSize))
 	if err := decoder.Decode(target); err != nil {
 		return err
 	}
@@ -313,7 +341,7 @@ func (s plexService) Render(client *http.Client, debug bool) (string, string, bo
 	}
 
 	var sessions plexSessionsResponse
-	if err := xml.NewDecoder(resp.Body).Decode(&sessions); err != nil {
+	if err := xml.NewDecoder(io.LimitReader(resp.Body, maxMediaResponseSize)).Decode(&sessions); err != nil {
 		display.DebugLog(debug, "Failed to parse Plex XML for %s: %v", s.cfg.Name, err)
 		return "", "", false
 	}
