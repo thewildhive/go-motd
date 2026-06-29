@@ -79,7 +79,7 @@ Config lookup order:
 1. `~/.config/motd/config.json`
 2. `/opt/motd/config.json`
 
-Use `motd -config /path/to/config.json` to load a specific file, or `motd -no-config` to force system-only output.
+Use `motd -config /path/to/config.json` to load a specific file, or `motd -no-config` to force system-only output. Use `motd check-config` to validate configuration; no config is valid and reports system-only mode.
 
 Legacy YAML files (`config.yml` / `config.yaml`) are not loaded at runtime. To migrate one to JSON, run:
 
@@ -97,7 +97,7 @@ mkdir -p ~/.config/motd
 cp config.json.sample ~/.config/motd/config.json
 ```
 
-Then edit values for your environment. Media services are opt-in and each enabled instance must include a URL and token/API key.
+Then edit values for your environment. Media services are opt-in and each enabled instance must include a URL and token/API key. If `compose_dir` points at directories with Compose files, `motd` shows a best-effort Docker Compose summary and skips it silently when unavailable.
 
 ### Optional Media Services
 
@@ -135,6 +135,8 @@ motd -v
 motd -h
 motd -d
 motd -no-config
+motd --json -no-config
+motd check-config
 ```
 
 ## Shell Integration

@@ -166,14 +166,17 @@ func parseWindowsCPUPercent(output []byte) (int, bool) {
 	values := make([]int, 0)
 	for _, line := range strings.Split(string(output), "\n") {
 		line = strings.TrimSpace(line)
-		if line == "" || !strings.Contains(line, "=") {
+		if line == "" {
 			continue
 		}
-		_, value, found := strings.Cut(line, "=")
-		if !found {
-			continue
+		if strings.Contains(line, "=") {
+			_, value, found := strings.Cut(line, "=")
+			if !found {
+				continue
+			}
+			line = strings.TrimSpace(value)
 		}
-		parsed, err := strconv.Atoi(strings.TrimSpace(value))
+		parsed, err := strconv.Atoi(line)
 		if err == nil {
 			values = append(values, parsed)
 		}
@@ -186,6 +189,14 @@ func parseWindowsCPUPercent(output []byte) (int, bool) {
 		total += value
 	}
 	return total / len(values), true
+}
+
+func parseWindowsIntOutput(output []byte) (int, bool) {
+	value, err := strconv.Atoi(strings.TrimSpace(string(output)))
+	if err != nil {
+		return 0, false
+	}
+	return value, true
 }
 
 func parseWindowsMemoryKB(output []byte) (uint64, uint64, bool) {

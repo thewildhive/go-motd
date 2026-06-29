@@ -88,40 +88,56 @@ type seerrRequestCountResponse struct {
 	Pending int `json:"pending"`
 }
 
-type mediaStatus struct {
-	order int
-	name  string
-	text  string
-	color string
+type MediaStatus struct {
+	Order int
+	Name  string
+	Text  string
+	Color string
+	Error string
 }
 
-func AllServices(cfg config.Config) []Service {
+func AllServices(cfg config.Config, selected map[string]bool) []Service {
 	out := make([]Service, 0,
 		len(cfg.Services.Plex)+len(cfg.Services.Jellyfin)+
 			len(cfg.Services.Sonarr)+len(cfg.Services.Radarr)+
 			len(cfg.Services.Seerr))
 
 	for i := range cfg.Services.Plex {
+		if !serviceSelected(selected, "plex") {
+			break
+		}
 		if isPlexReady(cfg.Services.Plex[i]) {
 			out = append(out, plexService{cfg: cfg.Services.Plex[i]})
 		}
 	}
 	for i := range cfg.Services.Jellyfin {
+		if !serviceSelected(selected, "jellyfin") {
+			break
+		}
 		if isJellyfinReady(cfg.Services.Jellyfin[i]) {
 			out = append(out, jellyfinService{cfg: cfg.Services.Jellyfin[i]})
 		}
 	}
 	for i := range cfg.Services.Sonarr {
+		if !serviceSelected(selected, "sonarr") {
+			break
+		}
 		if isAPIServiceReady(cfg.Services.Sonarr[i]) {
 			out = append(out, sonarrService{cfg: cfg.Services.Sonarr[i]})
 		}
 	}
 	for i := range cfg.Services.Radarr {
+		if !serviceSelected(selected, "radarr") {
+			break
+		}
 		if isAPIServiceReady(cfg.Services.Radarr[i]) {
 			out = append(out, radarrService{cfg: cfg.Services.Radarr[i]})
 		}
 	}
 	for i := range cfg.Services.Seerr {
+		if !serviceSelected(selected, "seerr") {
+			break
+		}
 		if isAPIServiceReady(cfg.Services.Seerr[i]) {
 			out = append(out, seerrService{cfg: cfg.Services.Seerr[i]})
 		}
@@ -129,25 +145,33 @@ func AllServices(cfg config.Config) []Service {
 	return out
 }
 
-func HasMediaServices(cfg config.Config) bool {
-	return len(AllServices(cfg)) > 0
+func serviceSelected(selected map[string]bool, name string) bool {
+	return len(selected) == 0 || selected[name]
 }
 
-func ShowMediaServices(cfg config.Config, client *http.Client, debug bool) {
-	services := AllServices(cfg)
+func HasMediaServices(cfg config.Config, selected map[string]bool) bool {
+	return len(AllServices(cfg, selected)) > 0
+}
+
+func ShowMediaServices(cfg config.Config, selected map[string]bool, client *http.Client, debug bool) {
+	services := AllServices(cfg, selected)
 	if len(services) == 0 {
 		return
 	}
 
 	display.PrintSection("Media Services")
 	for _, result := range collectMediaStatuses(services, client, debug) {
-		fmt.Print(formatMediaLine(result.name, result.text, result.color))
+		fmt.Print(formatMediaLine(result.Name, result.Text, result.Color))
 	}
 }
 
-func collectMediaStatuses(services []Service, client *http.Client, debug bool) []mediaStatus {
+func CollectMediaStatuses(cfg config.Config, selected map[string]bool, client *http.Client, debug bool) []MediaStatus {
+	return collectMediaStatuses(AllServices(cfg, selected), client, debug)
+}
+
+func collectMediaStatuses(services []Service, client *http.Client, debug bool) []MediaStatus {
 	var wg sync.WaitGroup
-	results := make(chan mediaStatus, len(services))
+	results := make(chan MediaStatus, len(services))
 	order := 0
 
 	start := func(svc Service) {
@@ -158,7 +182,9 @@ func collectMediaStatuses(services []Service, client *http.Client, debug bool) [
 			defer wg.Done()
 			text, color, ok := svc.Render(client, debug)
 			if ok {
-				results <- mediaStatus{order: currentOrder, name: svc.Name(), text: text, color: color}
+				results <- MediaStatus{Order: currentOrder, Name: svc.Name(), Text: text, Color: color}
+			} else {
+				results <- MediaStatus{Order: currentOrder, Name: svc.Name(), Text: "unavailable", Color: display.Yellow, Error: "unavailable"}
 			}
 		}()
 	}
@@ -172,13 +198,13 @@ func collectMediaStatuses(services []Service, client *http.Client, debug bool) [
 		close(results)
 	}()
 
-	collected := make([]mediaStatus, 0, order)
+	collected := make([]MediaStatus, 0, order)
 	for result := range results {
 		collected = append(collected, result)
 	}
 
 	sort.Slice(collected, func(i, j int) bool {
-		return collected[i].order < collected[j].order
+		return collected[i].Order < collected[j].Order
 	})
 
 	return collected
@@ -201,7 +227,7 @@ func IsPlaintextToRemote(rawURL string) bool {
 	return true
 }
 
-func isValidURL(rawURL string) bool {
+func IsValidURL(rawURL string) bool {
 	if rawURL == "" {
 		return false
 	}
@@ -222,15 +248,15 @@ func isValidURL(rawURL string) bool {
 }
 
 func isPlexReady(plex config.ServiceConfig) bool {
-	return plex.Enabled && isValidURL(plex.URL) && plex.Token != ""
+	return plex.Enabled && IsValidURL(plex.URL) && plex.Token != ""
 }
 
 func isJellyfinReady(jellyfin config.ServiceConfig) bool {
-	return jellyfin.Enabled && isValidURL(jellyfin.URL) && jellyfin.Token != ""
+	return jellyfin.Enabled && IsValidURL(jellyfin.URL) && jellyfin.Token != ""
 }
 
 func isAPIServiceReady(service config.ServiceConfig) bool {
-	return service.Enabled && isValidURL(service.URL) && service.APIKey != ""
+	return service.Enabled && IsValidURL(service.URL) && service.APIKey != ""
 }
 
 func formatMediaLine(label, text, color string) string {

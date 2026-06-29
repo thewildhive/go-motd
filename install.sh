@@ -17,6 +17,10 @@ RESET='\033[0m'
 INSTALL_DIR="${INSTALL_DIR:-/usr/local/bin}"
 CONFIG_DIR="${CONFIG_DIR:-$HOME/.config/motd}"
 
+CHECKSUMS_PUBLIC_KEY_PEM='-----BEGIN PUBLIC KEY-----
+MCowBQYDK2VwAyEAd8bWPCLR5lsXk1Y7SMKtABFxFPWBR2ztOLMiiwL5mDE=
+-----END PUBLIC KEY-----'
+
 # Function to print colored output
 print_info() {
     echo -e "${BLUE}[INFO]${RESET} $1"
@@ -116,6 +120,30 @@ download_file() {
     fi
 }
 
+verify_signature() {
+    local data_file="$1"
+    local sig_file="$2"
+    local key_file
+
+    if ! command -v openssl >/dev/null 2>&1; then
+        print_error "OpenSSL is required to verify release signatures"
+        exit 1
+    fi
+    if [ ! -s "$sig_file" ]; then
+        print_error "Missing signature file: $sig_file"
+        exit 1
+    fi
+
+    key_file=$(mktemp)
+    printf '%s\n' "$CHECKSUMS_PUBLIC_KEY_PEM" > "$key_file"
+    if ! openssl pkeyutl -verify -pubin -inkey "$key_file" -rawin -in "$data_file" -sigfile "$sig_file" >/dev/null 2>&1; then
+        rm -f "$key_file"
+        print_error "Signature verification failed for $data_file"
+        exit 1
+    fi
+    rm -f "$key_file"
+}
+
 verify_checksum() {
     local checksum_file="$1"
     local filename="$2"
@@ -182,6 +210,7 @@ install_motd() {
 
     local download_url="https://github.com/thewildhive/go-motd/releases/download/v${version}/${filename}"
     local checksums_url="https://github.com/thewildhive/go-motd/releases/download/v${version}/archive-checksums.txt"
+    local checksums_sig_url="https://github.com/thewildhive/go-motd/releases/download/v${version}/archive-checksums.txt.sig"
     temp_dir=$(mktemp -d)
     trap 'rm -rf "$temp_dir"' EXIT
     
@@ -189,11 +218,13 @@ install_motd() {
     
     download_file "$download_url" "${temp_dir}/${filename}"
     download_file "$checksums_url" "${temp_dir}/archive-checksums.txt"
+    download_file "$checksums_sig_url" "${temp_dir}/archive-checksums.txt.sig"
     
     # Extract and install
     print_info "Extracting and installing..."
     previous_dir=$(pwd)
     cd "$temp_dir"
+    verify_signature "archive-checksums.txt" "archive-checksums.txt.sig"
     verify_checksum "archive-checksums.txt" "$filename"
     if [[ "$filename" == *.zip ]]; then
         if ! command -v unzip >/dev/null 2>&1; then

@@ -119,6 +119,26 @@ func TestParseWindowsCPUPercent(t *testing.T) {
 	}
 }
 
+func TestParseWindowsCPUPercentPowerShellOutput(t *testing.T) {
+	percent, ok := parseWindowsCPUPercent([]byte("23\r\n"))
+	if !ok || percent != 23 {
+		t.Fatalf("unexpected CPU percent: %d ok=%v", percent, ok)
+	}
+}
+
+func TestParseWindowsIntOutput(t *testing.T) {
+	count, ok := parseWindowsIntOutput([]byte("143\r\n"))
+	if !ok || count != 143 {
+		t.Fatalf("unexpected process count: %d ok=%v", count, ok)
+	}
+}
+
+func TestParseWindowsIntOutputRejectsMalformedInput(t *testing.T) {
+	if _, ok := parseWindowsIntOutput([]byte("not-a-number")); ok {
+		t.Fatal("expected malformed integer output to fail")
+	}
+}
+
 func TestParseWindowsMemoryKB(t *testing.T) {
 	total, free, ok := parseWindowsMemoryKB([]byte("33554432,16777216"))
 	if !ok || total != 33554432 || free != 16777216 {

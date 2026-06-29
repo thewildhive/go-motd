@@ -39,11 +39,23 @@ func TestDotLabelWidthConstant(t *testing.T) {
 }
 
 func TestColorConstantsAreSet(t *testing.T) {
+	SetColorEnabled(true)
 	if Red == "" || Green == "" || Yellow == "" || Blue == "" || Cyan == "" || Bold == "" || Reset == "" {
 		t.Fatal("expected all color constants to be non-empty")
 	}
 	if Red == Reset {
 		t.Fatal("expected Red != Reset")
+	}
+}
+
+func TestSetColorEnabled(t *testing.T) {
+	SetColorEnabled(false)
+	if Red != "" || Green != "" || Reset != "" {
+		t.Fatal("expected colors to be disabled")
+	}
+	SetColorEnabled(true)
+	if Red == "" || Green == "" || Reset == "" {
+		t.Fatal("expected colors to be restored")
 	}
 }
 

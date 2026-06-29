@@ -32,7 +32,14 @@ func main() {
 	configPath := flag.String("config", "", "Load config from a specific JSON file")
 	migrateConfig := flag.Bool("migrate", false, "Migrate legacy YAML config to JSON and exit")
 	noConfig := flag.Bool("no-config", false, "Skip config loading and show system information only")
+	jsonOutput := flag.Bool("json", false, "Output machine-readable JSON")
+	noColor := flag.Bool("no-color", false, "Disable ANSI colors")
+	servicesFilter := flag.String("services", "", "Only show selected media services (comma-separated)")
 	flag.Parse()
+
+	if *noColor || *jsonOutput || os.Getenv("NO_COLOR") != "" {
+		display.SetColorEnabled(false)
+	}
 
 	if *showHelp {
 		usage()
@@ -79,6 +86,17 @@ func main() {
 		display.DebugLog(*debug, "Runtime configuration ready")
 	}
 
+	serviceSet, err := parseServiceFilter(*servicesFilter)
+	if err != nil {
+		fmt.Printf("%sError: %v%s\n", display.Red, err, display.Reset)
+		os.Exit(1)
+	}
+
+	if *jsonOutput {
+		renderJSON(cfg, serviceSet, client, *debug)
+		return
+	}
+
 	display.PrintHeader()
 
 	if msg := update.CheckUpdate(VERSION, client); msg != "" {
@@ -93,13 +111,14 @@ func main() {
 	display.PrintSection("Services & Resources")
 
 	system.ShowDocker(*debug)
+	system.ShowCompose(sysCfg, *debug)
 	system.ShowProcesses(sysCfg, *debug)
 	system.ShowUser(sysCfg, *debug)
 	system.ShowDisk(sysCfg, *debug)
 	system.ShowTemp(sysCfg, *debug)
 
-	if media.HasMediaServices(cfg) {
-		media.ShowMediaServices(cfg, client, *debug)
+	if media.HasMediaServices(cfg, serviceSet) {
+		media.ShowMediaServices(cfg, serviceSet, client, *debug)
 	}
 
 	fmt.Println()
@@ -116,6 +135,9 @@ func handleSubcommand() bool {
 		return true
 	case "configure":
 		handleConfigure()
+		return true
+	case "check-config":
+		handleCheckConfig(os.Args[2:])
 		return true
 	default:
 		return false
@@ -141,9 +163,14 @@ Options:
   -config PATH    Load config from a specific JSON file
   -migrate        Migrate legacy config.yml/config.yaml to JSON and exit
   -no-config      Skip config loading and show system information only
+  -json           Output machine-readable JSON
+  -no-color       Disable ANSI colors
+  -services LIST  Only show selected media services (comma-separated)
 
 Commands:
   self-update     Update to the latest version from GitHub releases
+  configure       Create or edit the config file
+  check-config    Validate configuration and print diagnostics
 
 Configuration Files:
   Optional; only required for media integrations or custom system paths.

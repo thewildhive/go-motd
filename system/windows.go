@@ -191,7 +191,9 @@ func getWindowsProcessCount() (int, bool) {
 	if cmdErr == nil {
 		output, err := cmd.Output()
 		if err == nil {
-			return countNonEmptyLines(output), true
+			if count, ok := parseWindowsIntOutput(output); ok {
+				return count, true
+			}
 		}
 	}
 
