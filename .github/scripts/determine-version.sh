@@ -21,11 +21,75 @@
 
 set -euo pipefail
 
+bump_patch_version() {
+  local tag="$1"
+  local version="${tag#v}"
+
+  if ! echo "$version" | grep -Eq '^([0-9]+\.){2}[0-9]+$'; then
+    echo ""
+    return
+  fi
+
+  local major
+  local rest
+  local minor
+  local patch
+
+  major=${version%%.*}
+  rest=${version#*.}
+  minor=${rest%%.*}
+  patch=${version##*.}
+  patch=$((patch + 1))
+
+  printf 'v%s.%s.%s\n' "$major" "$minor" "$patch"
+}
+
+resolve_version_collision() {
+  local tag="$1"
+  local head
+  local existing
+  local next_tag
+  local max_attempts=128
+  local attempt=0
+
+  head=$(git rev-parse HEAD)
+
+  while true; do
+    if ! git rev-parse -q --verify "refs/tags/${tag}^{commit}" >/dev/null 2>&1; then
+      printf '%s' "$tag"
+      return
+    fi
+
+    existing=$(git rev-parse "${tag}^{commit}")
+    if [ "$existing" = "$head" ]; then
+      printf ''
+      return
+    fi
+
+    next_tag=$(bump_patch_version "$tag")
+    if [ -z "$next_tag" ]; then
+      echo "warning: could not advance non-semver collision tag '${tag}', skipping release" >&2
+      printf ''
+      return
+    fi
+
+    attempt=$((attempt + 1))
+    if [ "$attempt" -gt "$max_attempts" ]; then
+      echo "warning: exceeded ${max_attempts} collision increments for ${tag}, skipping release" >&2
+      printf ''
+      return
+    fi
+
+    tag="$next_tag"
+  done
+}
+
 CURRENT_TAG=$(svu current 2>/dev/null || echo "v0.0.0")
 
 # No tags yet — first release
 if [ "$CURRENT_TAG" = "v0.0.0" ]; then
-  echo "version=$(svu minor)"
+  NEXT_TAG=$(svu minor)
+  echo "version=$(resolve_version_collision "$NEXT_TAG")"
   exit 0
 fi
 
@@ -41,7 +105,7 @@ fi
 NEXT_TAG=$(svu next 2>/dev/null || echo "")
 
 if [ -n "$NEXT_TAG" ] && [ "$NEXT_TAG" != "$CURRENT_TAG" ]; then
-  echo "version=$NEXT_TAG"
+  echo "version=$(resolve_version_collision "$NEXT_TAG")"
   exit 0
 fi
 
@@ -63,15 +127,18 @@ fi
 # Check for breaking changes (look for ! after type/scope or BREAKING CHANGE in body)
 if git log "$CURRENT_TAG..HEAD" --no-merges --format="%s%n%b" 2>/dev/null | \
      grep -q -E '(BREAKING[ -]CHANGE|^[a-z]+\(.*\)!:|^[a-z]+!:)'; then
-  echo "version=$(svu major)"
+  version=$(svu major)
+  echo "version=$(resolve_version_collision "$version")"
   exit 0
 fi
 
 # Check for feat or perf -> minor
 if echo "$RELEASE_TYPES" | grep -q -E '^(feat|perf)$'; then
-  echo "version=$(svu minor)"
+  version=$(svu minor)
+  echo "version=$(resolve_version_collision "$version")"
   exit 0
 fi
 
 # fix, refactor, build -> patch
-echo "version=$(svu patch)"
+version=$(svu patch)
+echo "version=$(resolve_version_collision "$version")"
