@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 
 	"motd/config"
@@ -162,7 +163,7 @@ func TestRenderMediaLine(t *testing.T) {
 }
 
 func TestShowMediaServicesStableOrder(t *testing.T) {
-	var mu callMutex
+	var mu sync.Mutex
 	plexServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
 		defer mu.Unlock()
@@ -340,25 +341,6 @@ func TestDecodeJSONResponse(t *testing.T) {
 	if result.Pending != 3 {
 		t.Fatalf("expected 3 pending, got %d", result.Pending)
 	}
-}
-
-// callMutex is a simple mutex wrapper to avoid import issues in tests.
-type callMutex struct {
-	ch chan struct{}
-}
-
-func (m *callMutex) Lock() {
-	if m.ch == nil {
-		m.ch = make(chan struct{}, 1)
-	}
-	m.ch <- struct{}{}
-}
-
-func (m *callMutex) Unlock() {
-	if m.ch == nil {
-		return
-	}
-	<-m.ch
 }
 
 func TestHasNowPlayingItem(t *testing.T) {
