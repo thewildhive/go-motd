@@ -1,7 +1,9 @@
 package update
 
 import (
+	"crypto/ed25519"
 	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -19,6 +21,12 @@ import (
 	"motd/util"
 )
 
+const (
+	maxReleaseJSONSize = 1 << 20   // 1 MB
+	maxChecksumsSize   = 64 << 10  // 64 KB
+	maxBinarySize      = 100 << 20 // 100 MB
+)
+
 type GitHubRelease struct {
 	TagName string `json:"tag_name"`
 	Name    string `json:"name"`
@@ -28,7 +36,63 @@ type GitHubRelease struct {
 	} `json:"assets"`
 }
 
+// checksumsPublicKeyHex is the Ed25519 public key used to verify
+// checksums.txt signatures. The corresponding private key is stored
+// as a GitHub secret (SIGNING_PRIVATE_KEY) and used during release.
+//
+// To generate a new key pair:
+//
+//	openssl genpkey -algorithm ed25519 -out private.pem
+//	openssl pkey -in private.pem -pubout -out public.pem
+//
+// Extract the raw 32-byte public key:
+//
+//	openssl pkey -in public.pem -pubin -outform DER | tail -c 32 | xxd -p
+//
+// Replace the placeholder below with the hex-encoded public key.
+const checksumsPublicKeyHex = "e610845831cfecdefa89e88a976483f1d7d1d1bbc2b29442617deedab9c0398e"
+
+var (
+	errMissingSig       = errors.New("checksums.txt.sig not found in release assets")
+	errInvalidSig       = errors.New("checksums.txt signature verification failed: checksums file has been tampered with")
+	errKeyNotConfigured = errors.New("checksums signing key not configured: replace the placeholder in checksumsPublicKeyHex and set SIGNING_PRIVATE_KEY in repo secrets")
+)
+
+func defaultSigningPublicKey() (ed25519.PublicKey, error) {
+	b, err := hex.DecodeString(checksumsPublicKeyHex)
+	if err != nil {
+		return nil, fmt.Errorf("invalid checksums public key hex: %w", err)
+	}
+	if len(b) != ed25519.PublicKeySize {
+		return nil, fmt.Errorf("invalid checksums public key length: got %d, want %d", len(b), ed25519.PublicKeySize)
+	}
+	return ed25519.PublicKey(b), nil
+}
+
+// Checker holds the dependencies for checking and performing updates.
+// Tests should create isolated Checker values instead of mutating globals.
+type Checker struct {
+	fetchLatestVersion func(client *http.Client) (string, error)
+	cachePath          func() string
+	signingPublicKey   func() (ed25519.PublicKey, error)
+}
+
+// NewChecker returns a Checker with production defaults.
+func NewChecker() *Checker {
+	return &Checker{
+		fetchLatestVersion: func(client *http.Client) (string, error) {
+			return fetchLatestVersionFromURL("https://api.github.com/repos/thewildhive/go-motd/releases/latest", client)
+		},
+		cachePath:        defaultCachePath,
+		signingPublicKey: defaultSigningPublicKey,
+	}
+}
+
 func HandleSelfUpdate(version string, client *http.Client) {
+	NewChecker().HandleSelfUpdate(version, client)
+}
+
+func (ch *Checker) HandleSelfUpdate(version string, client *http.Client) {
 	force := false
 	if len(os.Args) > 2 && os.Args[2] == "--force" {
 		force = true
@@ -90,7 +154,7 @@ func HandleSelfUpdate(version string, client *http.Client) {
 
 	fmt.Printf("\n%sUpdating to version %s...%s\n", display.Cyan, latestVersion, display.Reset)
 
-	if err := performUpdate(release, latestVersion, client); err != nil {
+	if err := ch.performUpdate(release, latestVersion, client); err != nil {
 		fmt.Printf("%sUpdate failed: %v%s\n", display.Red, err, display.Reset)
 		os.Exit(1)
 	}
@@ -111,9 +175,12 @@ func getLatestRelease(client *http.Client) (*GitHubRelease, error) {
 		return nil, fmt.Errorf("GitHub API returned status %d", resp.StatusCode)
 	}
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxReleaseJSONSize))
 	if err != nil {
 		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+	if len(body) >= maxReleaseJSONSize {
+		return nil, fmt.Errorf("release JSON response too large (max %d bytes)", maxReleaseJSONSize)
 	}
 
 	var release GitHubRelease
@@ -153,7 +220,7 @@ func CompareVersions(current, latest string) int {
 	return 0
 }
 
-func performUpdate(release *GitHubRelease, version string, client *http.Client) error {
+func (ch *Checker) performUpdate(release *GitHubRelease, version string, client *http.Client) error {
 	assetName := getPlatformAssetName()
 	if assetName == "" {
 		return fmt.Errorf("unsupported platform: %s/%s", runtime.GOOS, runtime.GOARCH)
@@ -171,9 +238,17 @@ func performUpdate(release *GitHubRelease, version string, client *http.Client) 
 		return fmt.Errorf("could not find release asset for platform %s", assetName)
 	}
 
-	checksums, err := getChecksums(release, client)
+	checksums, checksumsData, err := getChecksums(release, client)
 	if err != nil {
 		return fmt.Errorf("failed to get checksums: %w", err)
+	}
+
+	sigData, err := downloadChecksumsSignature(release, client)
+	if err != nil {
+		return fmt.Errorf("failed to get checksums signature: %w", err)
+	}
+	if err := ch.verifyChecksumsSignature(checksumsData, sigData); err != nil {
+		return fmt.Errorf("checksums verification rejected: %w", err)
 	}
 
 	execPath, err := os.Executable()
@@ -244,7 +319,10 @@ func platformAssetName(goos, goarch string) string {
 	return ""
 }
 
-func getChecksums(release *GitHubRelease, client *http.Client) (map[string]string, error) {
+// getChecksums downloads checksums.txt from the release assets, parses it
+// into a filename→sha256 map, and returns the map along with the raw bytes
+// (which the caller uses for signature verification).
+func getChecksums(release *GitHubRelease, client *http.Client) (map[string]string, []byte, error) {
 	var checksumsURL string
 	for _, asset := range release.Assets {
 		if asset.Name == "checksums.txt" {
@@ -254,22 +332,25 @@ func getChecksums(release *GitHubRelease, client *http.Client) (map[string]strin
 	}
 
 	if checksumsURL == "" {
-		return nil, fmt.Errorf("checksums.txt not found in release assets")
+		return nil, nil, fmt.Errorf("checksums.txt not found in release assets")
 	}
 
 	resp, err := client.Get(checksumsURL)
 	if err != nil {
-		return nil, fmt.Errorf("failed to download checksums: %w", err)
+		return nil, nil, fmt.Errorf("failed to download checksums: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("checksums download returned status %d", resp.StatusCode)
+		return nil, nil, fmt.Errorf("checksums download returned status %d", resp.StatusCode)
 	}
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxChecksumsSize))
 	if err != nil {
-		return nil, fmt.Errorf("failed to read checksums: %w", err)
+		return nil, nil, fmt.Errorf("failed to read checksums: %w", err)
+	}
+	if len(body) >= maxChecksumsSize {
+		return nil, nil, fmt.Errorf("checksums file too large (max %d bytes)", maxChecksumsSize)
 	}
 
 	checksums := make(map[string]string)
@@ -285,7 +366,7 @@ func getChecksums(release *GitHubRelease, client *http.Client) (map[string]strin
 		}
 	}
 
-	return checksums, nil
+	return checksums, body, nil
 }
 
 func parseChecksumLine(line string) (string, string, bool) {
@@ -296,12 +377,84 @@ func parseChecksumLine(line string) (string, string, bool) {
 	return parts[0], strings.TrimPrefix(parts[1], "*"), true
 }
 
+// getChecksumsSignatureURL finds the checksums.txt.sig asset URL in the release.
+func getChecksumsSignatureURL(release *GitHubRelease) string {
+	for _, asset := range release.Assets {
+		if asset.Name == "checksums.txt.sig" {
+			return asset.URL
+		}
+	}
+	return ""
+}
+
+// downloadChecksumsSignature downloads the Ed25519 signature file for
+// checksums.txt from the release assets.
+func downloadChecksumsSignature(release *GitHubRelease, client *http.Client) ([]byte, error) {
+	sigURL := getChecksumsSignatureURL(release)
+	if sigURL == "" {
+		return nil, errMissingSig
+	}
+
+	resp, err := client.Get(sigURL)
+	if err != nil {
+		return nil, fmt.Errorf("failed to download checksums signature: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("checksums signature download returned status %d", resp.StatusCode)
+	}
+
+	sig, err := io.ReadAll(io.LimitReader(resp.Body, maxChecksumsSize))
+	if err != nil {
+		return nil, fmt.Errorf("failed to read checksums signature: %w", err)
+	}
+	if len(sig) >= maxChecksumsSize {
+		return nil, fmt.Errorf("checksums signature too large (max %d bytes)", maxChecksumsSize)
+	}
+
+	return sig, nil
+}
+
+// isZeroKey reports whether pubKey is the all-zero placeholder.
+func isZeroKey(pubKey ed25519.PublicKey) bool {
+	for _, b := range pubKey {
+		if b != 0 {
+			return false
+		}
+	}
+	return true
+}
+
+// verifyChecksumsSignature verifies the Ed25519 signature of checksums.txt
+// data using the embedded public key.
+func (ch *Checker) verifyChecksumsSignature(data, sig []byte) error {
+	pubKey, err := ch.signingPublicKey()
+	if err != nil {
+		return err
+	}
+	if isZeroKey(pubKey) {
+		return errKeyNotConfigured
+	}
+	if !ed25519.Verify(pubKey, data, sig) {
+		return errInvalidSig
+	}
+	return nil
+}
+
 func downloadBinary(url, filename string, checksums map[string]string, tempDir string, client *http.Client) (string, error) {
 	tempFile, err := os.CreateTemp(tempDir, "motd-update-*.tmp")
 	if err != nil {
 		return "", fmt.Errorf("failed to create temp file: %w", err)
 	}
-	defer tempFile.Close()
+	tmpPath := tempFile.Name()
+	removeTemp := true
+	defer func() {
+		tempFile.Close()
+		if removeTemp {
+			os.Remove(tmpPath)
+		}
+	}()
 
 	resp, err := client.Get(url)
 	if err != nil {
@@ -316,8 +469,13 @@ func downloadBinary(url, filename string, checksums map[string]string, tempDir s
 	hasher := sha256.New()
 	multiWriter := io.MultiWriter(tempFile, hasher)
 
-	if _, err := io.Copy(multiWriter, resp.Body); err != nil {
+	limited := io.LimitReader(resp.Body, maxBinarySize+1)
+	written, err := io.Copy(multiWriter, limited)
+	if err != nil {
 		return "", fmt.Errorf("failed to save binary: %w", err)
+	}
+	if written > maxBinarySize {
+		return "", fmt.Errorf("binary download too large (max %d bytes)", maxBinarySize)
 	}
 
 	downloadedChecksum := fmt.Sprintf("%x", hasher.Sum(nil))
@@ -330,7 +488,8 @@ func downloadBinary(url, filename string, checksums map[string]string, tempDir s
 		return "", fmt.Errorf("checksum verification failed: expected %s, got %s", expectedChecksum, downloadedChecksum)
 	}
 
-	return tempFile.Name(), nil
+	removeTemp = false
+	return tmpPath, nil
 }
 
 func replaceBinary(tempPath, execPath, backupPath string) error {
@@ -339,7 +498,14 @@ func replaceBinary(tempPath, execPath, backupPath string) error {
 	}
 
 	if runtime.GOOS == "windows" {
-		batPath := filepath.Join(os.TempDir(), "motd-update.bat")
+		batFile, err := os.CreateTemp("", "motd-update-*.bat")
+		if err != nil {
+			return fmt.Errorf("failed to create update script: %w", err)
+		}
+		batPath := batFile.Name()
+		batFile.Close()
+		defer os.Remove(batPath)
+
 		tempBatchPath := windowsBatchPath(tempPath)
 		execBatchPath := windowsBatchPath(execPath)
 		backupBatchPath := windowsBatchPath(backupPath)
@@ -353,7 +519,7 @@ del "%s"
 `, tempBatchPath, execBatchPath, backupBatchPath, batBatchPath)
 
 		if err := os.WriteFile(batPath, []byte(batContent), 0644); err != nil {
-			return fmt.Errorf("failed to create update script: %w", err)
+			return fmt.Errorf("failed to write update script: %w", err)
 		}
 
 		cmd := exec.Command("cmd", "/c", batPath)
@@ -366,16 +532,40 @@ del "%s"
 	}
 
 	if err := os.Rename(tempPath, execPath); err != nil {
-		// If rename fails with a cross-device link error (EXDEV), fall back to
-		// copying the file contents and removing the source.
 		var linkErr *os.LinkError
 		if errors.As(err, &linkErr) {
-			if copyErr := copyFileContents(tempPath, execPath); copyErr != nil {
-				return fmt.Errorf("failed to replace binary (copy fallback): %w", copyErr)
+			// Cross-device link: stage the binary in the target directory
+			// first, then rename atomically into place.
+			data, readErr := os.ReadFile(tempPath)
+			if readErr != nil {
+				return fmt.Errorf("failed to read downloaded binary: %w", readErr)
 			}
-			if removeErr := os.Remove(tempPath); removeErr != nil {
-				return fmt.Errorf("binary replaced but temp cleanup failed: %w", removeErr)
+
+			stageFile, stageErr := os.CreateTemp(filepath.Dir(execPath), ".motd-replace-*")
+			if stageErr != nil {
+				return fmt.Errorf("failed to create stage file: %w", stageErr)
 			}
+			stagePath := stageFile.Name()
+			defer os.Remove(stagePath)
+
+			if _, writeErr := stageFile.Write(data); writeErr != nil {
+				stageFile.Close()
+				return fmt.Errorf("failed to write stage file: %w", writeErr)
+			}
+			if syncErr := stageFile.Sync(); syncErr != nil {
+				stageFile.Close()
+				return fmt.Errorf("failed to sync stage file: %w", syncErr)
+			}
+			if chmodErr := stageFile.Chmod(0755); chmodErr != nil {
+				stageFile.Close()
+				return fmt.Errorf("failed to chmod stage file: %w", chmodErr)
+			}
+			stageFile.Close()
+
+			if renameErr := os.Rename(stagePath, execPath); renameErr != nil {
+				return fmt.Errorf("failed to rename stage file: %w", renameErr)
+			}
+			os.Remove(tempPath)
 			return nil
 		}
 		return fmt.Errorf("failed to replace binary: %w", err)
@@ -392,22 +582,19 @@ func isInteractive() bool {
 	return fi.Mode()&os.ModeCharDevice != 0
 }
 
-func copyFileContents(src, dst string) error {
-	data, err := os.ReadFile(src)
-	if err != nil {
-		return fmt.Errorf("failed to read source: %w", err)
-	}
-	if err := os.WriteFile(dst, data, 0755); err != nil {
-		return fmt.Errorf("failed to write destination: %w", err)
-	}
-	return nil
-}
-
 func windowsBatchPath(filePath string) string {
-	return strings.ReplaceAll(
-		strings.ReplaceAll(filepath.ToSlash(filePath), "/", "\\"),
-		`"`, `""`,
-	)
+	s := filepath.ToSlash(filePath)
+	s = strings.ReplaceAll(s, "/", "\\")
+	s = strings.ReplaceAll(s, "%", "%%")
+	s = strings.ReplaceAll(s, "^", "^^")
+	s = strings.ReplaceAll(s, "&", "^&")
+	s = strings.ReplaceAll(s, "|", "^|")
+	s = strings.ReplaceAll(s, "<", "^<")
+	s = strings.ReplaceAll(s, ">", "^>")
+	s = strings.ReplaceAll(s, "(", "^(")
+	s = strings.ReplaceAll(s, ")", "^)")
+	s = strings.ReplaceAll(s, `"`, `""`)
+	return s
 }
 
 func restoreBackup(backupPath, execPath string) error {
@@ -433,13 +620,14 @@ func checkWriteAccess(execPath string) error {
 	return os.Remove(tmpFile.Name())
 }
 
+type cacheEntry struct {
+	CheckedAt int64  `json:"checked_at"`
+	Latest    string `json:"latest"`
+	Message   string `json:"message"`
+}
+
 const cacheFile = "motd-version-check"
 const cacheInterval = 15 * time.Minute
-
-// fetchLatestVersion is a variable so tests can override the HTTP call.
-var fetchLatestVersion = func(client *http.Client) (string, error) {
-	return fetchLatestVersionFromURL("https://api.github.com/repos/thewildhive/go-motd/releases/latest", client)
-}
 
 func fetchLatestVersionFromURL(url string, client *http.Client) (string, error) {
 	resp, err := client.Get(url)
@@ -452,9 +640,12 @@ func fetchLatestVersionFromURL(url string, client *http.Client) (string, error) 
 		return "", fmt.Errorf("GitHub API returned status %d", resp.StatusCode)
 	}
 
-	body, err := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(io.LimitReader(resp.Body, maxReleaseJSONSize))
 	if err != nil {
 		return "", fmt.Errorf("failed to read response: %w", err)
+	}
+	if len(body) >= maxReleaseJSONSize {
+		return "", fmt.Errorf("release JSON response too large (max %d bytes)", maxReleaseJSONSize)
 	}
 
 	var release GitHubRelease
@@ -469,49 +660,47 @@ func fetchLatestVersionFromURL(url string, client *http.Client) (string, error) 
 // is available. Results are cached for cacheInterval to avoid hammering the
 // GitHub API on every motd invocation.
 func CheckUpdate(currentVersion string, client *http.Client) string {
-	msg := readCachedVersion()
-	if msg != "" {
+	return NewChecker().CheckUpdate(currentVersion, client)
+}
+
+func (ch *Checker) CheckUpdate(currentVersion string, client *http.Client) string {
+	msg := ch.readCachedVersion()
+	switch {
+	case msg == "uptodate":
+		return ""
+	case msg != "":
 		return msg
 	}
 
-	latest, err := fetchLatestVersion(client)
+	latest, err := ch.fetchLatestVersion(client)
 	if err != nil {
 		return ""
 	}
 
 	if CompareVersions(currentVersion, latest) >= 0 {
-		writeCachedVersion("")
+		ch.writeCachedVersion("uptodate")
 		return ""
 	}
 
 	msg = fmt.Sprintf("An update is available for motd (%s → %s). Run 'motd self-update' to upgrade.", currentVersion, latest)
-	writeCachedVersion(msg)
+	ch.writeCachedVersion(msg)
 	return msg
 }
 
-func cacheDir() (string, error) {
+func defaultCachePath() string {
 	cache, err := os.UserCacheDir()
 	if err != nil {
-		return "", err
+		return ""
 	}
 	dir := filepath.Join(cache, "motd")
 	if err := os.MkdirAll(dir, 0755); err != nil {
-		return "", err
-	}
-	return dir, nil
-}
-
-// cachePath is a variable so tests can replace it with a temp directory.
-var cachePath = func() string {
-	dir, err := cacheDir()
-	if err != nil {
 		return ""
 	}
 	return filepath.Join(dir, cacheFile)
 }
 
-func readCachedVersion() string {
-	path := cachePath()
+func (ch *Checker) readCachedVersion() string {
+	path := ch.cachePath()
 	if path == "" {
 		return ""
 	}
@@ -521,29 +710,28 @@ func readCachedVersion() string {
 		return ""
 	}
 
-	parts := strings.SplitN(string(data), "\n", 2)
-	if len(parts) < 2 {
+	var entry cacheEntry
+	if err := json.Unmarshal(data, &entry); err != nil {
 		return ""
 	}
 
-	ts, err := strconv.ParseInt(strings.TrimSpace(parts[0]), 10, 64)
-	if err != nil {
+	if time.Since(time.Unix(entry.CheckedAt, 0)) > cacheInterval {
 		return ""
 	}
 
-	if time.Since(time.Unix(ts, 0)) > cacheInterval {
-		return ""
-	}
-
-	return strings.TrimSpace(parts[1])
+	return entry.Message
 }
 
-func writeCachedVersion(msg string) {
-	path := cachePath()
+func (ch *Checker) writeCachedVersion(msg string) {
+	path := ch.cachePath()
 	if path == "" {
 		return
 	}
 
-	data := fmt.Sprintf("%d\n%s\n", time.Now().Unix(), msg)
-	_ = os.WriteFile(path, []byte(data), 0644)
+	entry := cacheEntry{
+		CheckedAt: time.Now().Unix(),
+		Message:   msg,
+	}
+	data, _ := json.Marshal(entry)
+	_ = os.WriteFile(path, data, 0644)
 }

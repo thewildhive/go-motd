@@ -120,9 +120,23 @@ verify_checksum() {
     local checksum_file="$1"
     local filename="$2"
 
-    if ! command -v sha256sum >/dev/null 2>&1; then
-        print_warning "sha256sum is not available; skipping checksum verification"
-        return
+    local verify_cmd=""
+    if command -v sha256sum >/dev/null 2>&1; then
+        verify_cmd="sha256sum -c"
+    elif command -v shasum >/dev/null 2>&1; then
+        verify_cmd="shasum -a 256 -c"
+    elif command -v openssl >/dev/null 2>&1; then
+        verify_cmd="openssl dgst -sha256"
+    fi
+
+    if [ -z "$verify_cmd" ]; then
+        if [ "${MOTD_UNSAFE_INSTALL:-}" = "1" ]; then
+            print_warning "No checksum tool found; skipping verification (MOTD_UNSAFE_INSTALL=1)"
+            return
+        fi
+        print_error "No checksum verification tool found (sha256sum, shasum, or openssl)"
+        print_error "Set MOTD_UNSAFE_INSTALL=1 to skip verification"
+        exit 1
     fi
 
     local checksum_line
@@ -132,7 +146,20 @@ verify_checksum() {
         exit 1
     fi
 
-    printf '%s\n' "$checksum_line" | sha256sum -c -
+    if [ "$verify_cmd" = "openssl dgst -sha256" ]; then
+        local expected_hash
+        expected_hash=$(printf '%s' "$checksum_line" | awk '{print $1}')
+        local actual_hash
+        actual_hash=$(openssl dgst -sha256 "$filename" | awk '{print $NF}')
+        if [ "$expected_hash" != "$actual_hash" ]; then
+            print_error "Checksum verification failed for $filename"
+            print_error "  Expected: $expected_hash"
+            print_error "  Actual:   $actual_hash"
+            exit 1
+        fi
+    else
+        printf '%s\n' "$checksum_line" | $verify_cmd -
+    fi
 }
 
 # Function to download and install motd

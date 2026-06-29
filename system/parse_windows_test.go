@@ -64,6 +64,54 @@ func TestParseWMICDateTime(t *testing.T) {
 	}
 }
 
+func TestParseWMICDateTime_Truncated(t *testing.T) {
+	if _, ok := parseWMICDateTime("2026"); ok {
+		t.Fatal("expected truncated input to fail")
+	}
+}
+
+func TestParseWMICDateTime_Empty(t *testing.T) {
+	if _, ok := parseWMICDateTime(""); ok {
+		t.Fatal("expected empty input to fail")
+	}
+}
+
+func TestParseWMICDateTime_NonNumericMonth(t *testing.T) {
+	if _, ok := parseWMICDateTime("2026ab30123456"); ok {
+		t.Fatal("expected non-numeric month to fail")
+	}
+}
+
+func TestParseWMICDateTime_OutOfRangeMonth(t *testing.T) {
+	if _, ok := parseWMICDateTime("20261330123456"); ok {
+		t.Fatal("expected month 13 to fail")
+	}
+}
+
+func TestParseWMICDateTime_OutOfRangeDay(t *testing.T) {
+	if _, ok := parseWMICDateTime("20260432123456"); ok {
+		t.Fatal("expected day 32 to fail")
+	}
+}
+
+func TestParseWMICDateTime_OutOfRangeHour(t *testing.T) {
+	if _, ok := parseWMICDateTime("20260430243456"); ok {
+		t.Fatal("expected hour 24 to fail")
+	}
+}
+
+func TestParseWMICDateTime_OutOfRangeMinute(t *testing.T) {
+	if _, ok := parseWMICDateTime("20260430126056"); ok {
+		t.Fatal("expected minute 60 to fail")
+	}
+}
+
+func TestParseWMICDateTime_OutOfRangeSecond(t *testing.T) {
+	if _, ok := parseWMICDateTime("20260430123460"); ok {
+		t.Fatal("expected second 60 to fail")
+	}
+}
+
 func TestParseWindowsCPUPercent(t *testing.T) {
 	percent, ok := parseWindowsCPUPercent([]byte("LoadPercentage=10\nLoadPercentage=30\n"))
 	if !ok || percent != 20 {

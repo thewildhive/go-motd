@@ -134,12 +134,30 @@ func parseWMICDateTime(value string) (time.Time, bool) {
 		return time.Time{}, false
 	}
 
-	year, _ := strconv.Atoi(value[0:4])
-	month, _ := strconv.Atoi(value[4:6])
-	day, _ := strconv.Atoi(value[6:8])
-	hour, _ := strconv.Atoi(value[8:10])
-	min, _ := strconv.Atoi(value[10:12])
-	sec, _ := strconv.Atoi(value[12:14])
+	year, err := strconv.Atoi(value[0:4])
+	if err != nil {
+		return time.Time{}, false
+	}
+	month, err := strconv.Atoi(value[4:6])
+	if err != nil || month < 1 || month > 12 {
+		return time.Time{}, false
+	}
+	day, err := strconv.Atoi(value[6:8])
+	if err != nil || day < 1 || day > 31 {
+		return time.Time{}, false
+	}
+	hour, err := strconv.Atoi(value[8:10])
+	if err != nil || hour < 0 || hour > 23 {
+		return time.Time{}, false
+	}
+	min, err := strconv.Atoi(value[10:12])
+	if err != nil || min < 0 || min > 59 {
+		return time.Time{}, false
+	}
+	sec, err := strconv.Atoi(value[12:14])
+	if err != nil || sec < 0 || sec > 59 {
+		return time.Time{}, false
+	}
 
 	return time.Date(year, time.Month(month), day, hour, min, sec, 0, time.Local), true
 }

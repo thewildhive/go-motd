@@ -221,9 +221,48 @@ func PrintLegacyConfigError(err *LegacyConfigError) {
 	}
 }
 
+// AtomicWriteFile atomically writes data to path by writing to a temp file
+// in the same directory and then renaming into place.
+func AtomicWriteFile(path string, data []byte, mode os.FileMode) (err error) {
+	dir := filepath.Dir(path)
+	tmpFile, err := os.CreateTemp(dir, ".motd-write-*.tmp")
+	if err != nil {
+		return fmt.Errorf("failed to create temp file: %w", err)
+	}
+	tmpPath := tmpFile.Name()
+	defer func() {
+		if err != nil {
+			os.Remove(tmpPath)
+		}
+	}()
+
+	if _, err := tmpFile.Write(data); err != nil {
+		tmpFile.Close()
+		return fmt.Errorf("failed to write temp file: %w", err)
+	}
+	if err := tmpFile.Chmod(mode); err != nil {
+		tmpFile.Close()
+		return fmt.Errorf("failed to set temp file mode: %w", err)
+	}
+	if err := tmpFile.Sync(); err != nil {
+		tmpFile.Close()
+		return fmt.Errorf("failed to sync temp file: %w", err)
+	}
+	if err := tmpFile.Close(); err != nil {
+		return fmt.Errorf("failed to close temp file: %w", err)
+	}
+
+	if err := os.Rename(tmpPath, path); err != nil {
+		return fmt.Errorf("failed to rename temp file: %w", err)
+	}
+
+	return nil
+}
+
 // Write saves cfg as pretty-printed JSON to path, creating parent
 // directories as needed. Returns an error if marshalling, directory
-// creation, or file writing fails.
+// creation, or file writing fails. The write is atomic: a temp file
+// is written, synced, and renamed into place.
 func Write(path string, cfg Config) error {
 	data, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {
@@ -235,7 +274,7 @@ func Write(path string, cfg Config) error {
 		return fmt.Errorf("failed to create config directory: %w", err)
 	}
 
-	if err := os.WriteFile(path, data, 0o600); err != nil {
+	if err := AtomicWriteFile(path, data, 0o600); err != nil {
 		return fmt.Errorf("failed to write config: %w", err)
 	}
 

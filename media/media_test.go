@@ -411,12 +411,37 @@ func TestIsValidURL(t *testing.T) {
 		{"not-a-url", false},
 		{"http//missing-colon", false},
 		{"://no-scheme", false},
-		{"ftp://unsupported-scheme", true}, // technically valid, any scheme passes
+		{"ftp://unsupported-scheme", false},
+		{"http://", false},                     // hostless
+		{"https://user:pass@host:8096", false}, // embedded credentials
+		{"http://user@host:32400", false},      // embedded user
 	}
 
 	for _, tt := range tests {
 		if got := isValidURL(tt.rawURL); got != tt.want {
 			t.Fatalf("isValidURL(%q) = %v, want %v", tt.rawURL, got, tt.want)
+		}
+	}
+}
+
+func TestIsPlaintextToRemote(t *testing.T) {
+	tests := []struct {
+		rawURL string
+		want   bool
+	}{
+		{"http://plex:32400", true},
+		{"http://192.168.1.100:8989", true},
+		{"http://example.com:5055", true},
+		{"https://example.com", false},
+		{"http://localhost:32400", false},
+		{"http://127.0.0.1:8096", false},
+		{"http://[::1]:8989", false},
+		{"", false},
+		{"not-a-url", false},
+	}
+	for _, tt := range tests {
+		if got := IsPlaintextToRemote(tt.rawURL); got != tt.want {
+			t.Fatalf("IsPlaintextToRemote(%q) = %v, want %v", tt.rawURL, got, tt.want)
 		}
 	}
 }
@@ -465,6 +490,47 @@ func TestCountAvailableRecords_Empty(t *testing.T) {
 	}
 	if got := countAvailableRecords([]json.RawMessage{}); got != 0 {
 		t.Fatalf("expected 0 for empty, got %d", got)
+	}
+}
+
+func TestDecodeJSONResponseOversized(t *testing.T) {
+	payload := make([]byte, maxMediaResponseSize+1)
+	for i := range payload {
+		payload[i] = ' '
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write(payload)
+	}))
+	defer server.Close()
+
+	resp, err := http.Get(server.URL)
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	var result seerrRequestCountResponse
+	if err := decodeJSONResponse(resp, &result); err == nil {
+		t.Fatal("expected error for oversized JSON response")
+	}
+}
+
+func TestPlexRenderOversized_NoPanic(t *testing.T) {
+	payload := make([]byte, maxMediaResponseSize+1)
+	for i := range payload {
+		payload[i] = 'x'
+	}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/xml")
+		_, _ = w.Write(payload)
+	}))
+	defer server.Close()
+
+	svc := plexService{cfg: config.ServiceConfig{Name: "Test", URL: server.URL, Token: "t", Enabled: true}}
+	text, _, ok := svc.Render(server.Client(), false)
+	if ok {
+		t.Fatalf("expected Render to fail on oversized XML, got text: %q", text)
 	}
 }
 

@@ -5,10 +5,10 @@ package system
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
@@ -106,10 +106,18 @@ func ShowBandwidth(cfg ConfigAccessor, debug bool) {
 		interfaceName = "enp7s0"
 	}
 
-	output, err := exec.Command("vnstat", "--json", "m", "-i", interfaceName).Output()
+	cmd, cmdErr := util.SafeCommand("vnstat", "--json", "m", "-i", interfaceName)
+	if cmdErr != nil {
+		return
+	}
+	output, err := cmd.Output()
 	if err != nil {
 		if strings.TrimSpace(cfg.NetworkInterface) == "" {
-			output, err = exec.Command("vnstat", "--json", "m").Output()
+			cmd2, cmdErr2 := util.SafeCommand("vnstat", "--json", "m")
+			if cmdErr2 != nil {
+				return
+			}
+			output, err = cmd2.Output()
 		}
 	}
 
@@ -131,7 +139,11 @@ func ShowBandwidth(cfg ConfigAccessor, debug bool) {
 }
 
 func ShowUser(cfg ConfigAccessor, debug bool) {
-	output, err := exec.Command("who").Output()
+	cmd, err := util.SafeCommand("who")
+	if err != nil {
+		return
+	}
+	output, err := cmd.Output()
 	if err != nil {
 		return
 	}
@@ -188,11 +200,12 @@ func showDiskNative(path, label string) {
 	fmt.Printf("%s%.2f GB / %.2f GB (%.0f%% used)%s\n", display.Blue, usedGB, totalGB, pct, display.Reset)
 }
 
-var tempZonesChecked bool
-var tempZones []string
+var (
+	tempZones     []string
+	tempZonesOnce sync.Once
+)
 
 func scanThermalZones() {
-	tempZonesChecked = true
 	entries, err := os.ReadDir("/sys/class/thermal")
 	if err != nil {
 		return
@@ -209,9 +222,7 @@ func scanThermalZones() {
 }
 
 func ShowTemp(cfg ConfigAccessor, debug bool) {
-	if !tempZonesChecked {
-		scanThermalZones()
-	}
+	tempZonesOnce.Do(scanThermalZones)
 	if len(tempZones) == 0 {
 		return
 	}

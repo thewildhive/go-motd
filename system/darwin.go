@@ -4,7 +4,6 @@ package system
 
 import (
 	"fmt"
-	"os/exec"
 	"strconv"
 	"strings"
 	"time"
@@ -14,8 +13,13 @@ import (
 )
 
 func ShowOS(cfg ConfigAccessor, debug bool) {
-	nameOutput, nameErr := exec.Command("sw_vers", "-productName").Output()
-	versionOutput, versionErr := exec.Command("sw_vers", "-productVersion").Output()
+	nameCmd, nameErr := util.SafeCommand("sw_vers", "-productName")
+	versionCmd, versionErr := util.SafeCommand("sw_vers", "-productVersion")
+	if nameErr != nil || versionErr != nil {
+		return
+	}
+	nameOutput, nameErr := nameCmd.Output()
+	versionOutput, versionErr := versionCmd.Output()
 	if nameErr != nil || versionErr != nil {
 		return
 	}
@@ -26,9 +30,13 @@ func ShowOS(cfg ConfigAccessor, debug bool) {
 
 func ShowUptime(cfg ConfigAccessor, debug bool) {
 	uptime := "unknown"
-	if output, err := exec.Command("sysctl", "-n", "kern.boottime").Output(); err == nil {
-		if bootTime, ok := parseDarwinBootTime(output); ok {
-			uptime = FormatDuration(time.Since(bootTime))
+	cmd, cmdErr := util.SafeCommand("sysctl", "-n", "kern.boottime")
+	if cmdErr == nil {
+		output, err := cmd.Output()
+		if err == nil {
+			if bootTime, ok := parseDarwinBootTime(output); ok {
+				uptime = FormatDuration(time.Since(bootTime))
+			}
 		}
 	}
 
@@ -58,7 +66,11 @@ func parseDarwinBootTime(output []byte) (time.Time, bool) {
 }
 
 func ShowLoad(cfg ConfigAccessor, debug bool) {
-	output, err := exec.Command("sysctl", "-n", "vm.loadavg").Output()
+	cmd, cmdErr := util.SafeCommand("sysctl", "-n", "vm.loadavg")
+	if cmdErr != nil {
+		return
+	}
+	output, err := cmd.Output()
 	if err != nil {
 		return
 	}
@@ -69,8 +81,13 @@ func ShowLoad(cfg ConfigAccessor, debug bool) {
 }
 
 func ShowMemory(cfg ConfigAccessor, debug bool) {
-	totalOutput, totalErr := exec.Command("sysctl", "-n", "hw.memsize").Output()
-	statsOutput, statsErr := exec.Command("vm_stat").Output()
+	totalCmd, totalErr := util.SafeCommand("sysctl", "-n", "hw.memsize")
+	statsCmd, statsErr := util.SafeCommand("vm_stat")
+	if totalErr != nil || statsErr != nil {
+		return
+	}
+	totalOutput, totalErr := totalCmd.Output()
+	statsOutput, statsErr := statsCmd.Output()
 	if totalErr != nil || statsErr != nil {
 		return
 	}
@@ -141,7 +158,11 @@ func ShowBandwidth(cfg ConfigAccessor, debug bool) {
 		return
 	}
 
-	output, err := exec.Command("vnstat", "--json", "m", "-i", interfaceName).Output()
+	cmd, cmdErr := util.SafeCommand("vnstat", "--json", "m", "-i", interfaceName)
+	if cmdErr != nil {
+		return
+	}
+	output, err := cmd.Output()
 	if err != nil {
 		display.DebugLog(debug, "vnstat command failed: %v", err)
 		return
@@ -160,7 +181,11 @@ func ShowBandwidth(cfg ConfigAccessor, debug bool) {
 }
 
 func ShowUser(cfg ConfigAccessor, debug bool) {
-	output, err := exec.Command("who").Output()
+	cmd, cmdErr := util.SafeCommand("who")
+	if cmdErr != nil {
+		return
+	}
+	output, err := cmd.Output()
 	if err != nil {
 		return
 	}
@@ -171,7 +196,11 @@ func ShowUser(cfg ConfigAccessor, debug bool) {
 }
 
 func ShowProcesses(cfg ConfigAccessor, debug bool) {
-	output, err := exec.Command("ps", "-ax", "-o", "pid=").Output()
+	cmd, cmdErr := util.SafeCommand("ps", "-ax", "-o", "pid=")
+	if cmdErr != nil {
+		return
+	}
+	output, err := cmd.Output()
 	if err != nil {
 		return
 	}
@@ -189,7 +218,11 @@ func ShowDisk(cfg ConfigAccessor, debug bool) {
 }
 
 func showDFDisk(path, label string) {
-	output, err := exec.Command("df", "-k", path).Output()
+	cmd, cmdErr := util.SafeCommand("df", "-k", path)
+	if cmdErr != nil {
+		return
+	}
+	output, err := cmd.Output()
 	if err != nil {
 		return
 	}
@@ -216,7 +249,11 @@ func showDFDisk(path, label string) {
 func ShowTemp(cfg ConfigAccessor, debug bool) {}
 
 func getDefaultInterface() string {
-	output, err := exec.Command("route", "-n", "get", "default").Output()
+	cmd, cmdErr := util.SafeCommand("route", "-n", "get", "default")
+	if cmdErr != nil {
+		return ""
+	}
+	output, err := cmd.Output()
 	if err != nil {
 		return ""
 	}

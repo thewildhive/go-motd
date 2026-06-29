@@ -307,6 +307,113 @@ func TestGetExplicitLegacyConfigPaths_ReturnsSiblingYAML(t *testing.T) {
 	}
 }
 
+func TestAtomicWriteFile_CreatesFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "test.txt")
+
+	if err := AtomicWriteFile(path, []byte("hello"), 0644); err != nil {
+		t.Fatalf("AtomicWriteFile failed: %v", err)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("failed to read file: %v", err)
+	}
+	if string(data) != "hello" {
+		t.Fatalf("unexpected content: %q", data)
+	}
+}
+
+func TestAtomicWriteFile_ReplacesExistingFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "test.txt")
+
+	if err := os.WriteFile(path, []byte("old"), 0644); err != nil {
+		t.Fatalf("failed to write initial file: %v", err)
+	}
+
+	if err := AtomicWriteFile(path, []byte("new"), 0644); err != nil {
+		t.Fatalf("AtomicWriteFile failed: %v", err)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("failed to read file: %v", err)
+	}
+	if string(data) != "new" {
+		t.Fatalf("unexpected content: %q", data)
+	}
+}
+
+func TestAtomicWriteFile_EmptyData(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "empty.txt")
+
+	if err := AtomicWriteFile(path, []byte{}, 0644); err != nil {
+		t.Fatalf("AtomicWriteFile failed for empty data: %v", err)
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("failed to read file: %v", err)
+	}
+	if len(data) != 0 {
+		t.Fatalf("expected empty file, got %d bytes", len(data))
+	}
+}
+
+func TestAtomicWriteFile_SetsPermissions(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "secure.txt")
+
+	if err := AtomicWriteFile(path, []byte("secret"), 0600); err != nil {
+		t.Fatalf("AtomicWriteFile failed: %v", err)
+	}
+
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("failed to stat file: %v", err)
+	}
+	if info.Mode().Perm() != 0600 {
+		t.Fatalf("expected mode 0600, got %o", info.Mode().Perm())
+	}
+}
+
+func TestWrite_AtomicReplacesExisting(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.json")
+
+	orig := Config{System: struct {
+		ComposeDir string `json:"compose_dir"`
+		TankMount  string `json:"tank_mount"`
+		Network    struct {
+			Interface string `json:"interface,omitempty"`
+		} `json:"network,omitempty"`
+	}{ComposeDir: "/orig", TankMount: "/mnt/orig"}}
+	if err := Write(path, orig); err != nil {
+		t.Fatalf("initial Write failed: %v", err)
+	}
+
+	updated := Config{System: struct {
+		ComposeDir string `json:"compose_dir"`
+		TankMount  string `json:"tank_mount"`
+		Network    struct {
+			Interface string `json:"interface,omitempty"`
+		} `json:"network,omitempty"`
+	}{ComposeDir: "/updated", TankMount: "/mnt/updated"}}
+	if err := Write(path, updated); err != nil {
+		t.Fatalf("second Write failed: %v", err)
+	}
+
+	loaded, err := LoadJSONConfigFromPaths([]string{path}, nil)
+	if err != nil {
+		t.Fatalf("failed to reload: %v", err)
+	}
+	if loaded.System.ComposeDir != "/updated" {
+		t.Fatalf("expected /updated, got %q", loaded.System.ComposeDir)
+	}
+}
+
 func TestDetectLegacyYAML_MatchesJSONDirectory(t *testing.T) {
 	tempDir := t.TempDir()
 	userDir := filepath.Join(tempDir, "user")

@@ -4,9 +4,10 @@ import (
 	"bytes"
 	"fmt"
 	"os"
-	"os/exec"
 	"regexp"
 	"strings"
+
+	"motd/util"
 )
 
 const DotLabelWidth = 22
@@ -50,14 +51,17 @@ func PrintHeader() {
 	}
 
 	if hasFiglet() && safeHostnameRe.MatchString(hostname) {
-		output, err := exec.Command("figlet", hostname).Output()
-		if err == nil && len(output) > 0 {
-			lines := bytes.Split(bytes.TrimRight(output, "\n"), []byte("\n"))
-			for i, line := range lines {
-				fmt.Printf("%s%s%s\n", rainbowColors[i%len(rainbowColors)], string(line), Reset)
+		cmd, err := util.SafeCommand("figlet", hostname)
+		if err == nil {
+			output, err := cmd.Output()
+			if err == nil && len(output) > 0 {
+				lines := bytes.Split(bytes.TrimRight(output, "\n"), []byte("\n"))
+				for i, line := range lines {
+					fmt.Printf("%s%s%s\n", rainbowColors[i%len(rainbowColors)], string(line), Reset)
+				}
+				fmt.Println()
+				return
 			}
-			fmt.Println()
-			return
 		}
 	}
 
@@ -89,6 +93,5 @@ func PrintSection(title string) {
 var rainbowColors = []string{Red, Yellow, Green, Cyan, Blue, Magenta}
 
 func hasFiglet() bool {
-	_, err := exec.LookPath("figlet")
-	return err == nil
+	return util.HasCommand("figlet")
 }

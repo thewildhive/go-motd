@@ -53,7 +53,7 @@ jobs:
           cache: true
 
       - name: Install svu
-        run: go install github.com/caarlos0/svu/v2@latest
+        run: go install github.com/caarlos0/svu/v2@v2.0.2
 
       - name: Verify formatting
         run: |
@@ -153,6 +153,25 @@ jobs:
           cd release
           sha256sum motd-linux-amd64 motd-linux-arm64 motd-darwin-amd64 motd-darwin-arm64 motd-windows-amd64.exe > checksums.txt
 
+      - name: Sign checksums.txt
+        if: ${{ steps.version.outputs.needed == 'true' || steps.manual_release.outputs.released == 'true' }}
+        env:
+          SIGNING_KEY: ${{ secrets.SIGNING_PRIVATE_KEY }}
+        run: |
+          set -euo pipefail
+          if [ -z "$SIGNING_KEY" ]; then
+            echo "SIGNING_PRIVATE_KEY secret is not set — skipping checksums signing"
+            exit 1
+          fi
+          # Write the PEM-encoded private key to a temp file with restricted
+          # permissions, sign checksums.txt, then immediately remove the key.
+          KEY_FILE=$(mktemp)
+          chmod 600 "$KEY_FILE"
+          printf '%s' "$SIGNING_KEY" > "$KEY_FILE"
+          openssl pkeyutl -sign -inkey "$KEY_FILE" -rawin -in release/checksums.txt -out release/checksums.txt.sig
+          rm -f "$KEY_FILE"
+          echo "checksums.txt.sig created"
+
       - name: Package release artifacts
         if: ${{ steps.version.outputs.needed == 'true' || steps.manual_release.outputs.released == 'true' }}
         env:
@@ -247,6 +266,7 @@ jobs:
             release/motd-darwin-arm64
             release/motd-windows-amd64.exe
             release/checksums.txt
+            release/checksums.txt.sig
             release/archive-checksums.txt
           fail_on_unmatched_files: true
         env:
