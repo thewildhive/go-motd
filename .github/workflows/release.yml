@@ -90,7 +90,7 @@ jobs:
 
       - name: Install svu
         if: ${{ github.event_name != 'workflow_dispatch' }}
-        run: go install github.com/caarlos0/svu/v2@v2.0.2
+        run: go install github.com/caarlos0/svu/v2@v2.2.0
 
       - name: Verify formatting
         run: |
