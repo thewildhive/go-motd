@@ -36,6 +36,16 @@ func checkConfig(configPath string) ([]configIssue, config.Config, error) {
 func validateConfig(cfg config.Config) []configIssue {
 	issues := make([]configIssue, 0)
 	validateServices := func(kind string, services []config.ServiceConfig, wantsToken bool) {
+		enabledCount := 0
+		for _, svc := range services {
+			if svc.Enabled {
+				enabledCount++
+			}
+		}
+		if enabledCount > media.MaxMediaServicesPerType() {
+			issues = append(issues, configIssue{Level: "error", Message: fmt.Sprintf("%s has %d enabled services; maximum is %d", kind, enabledCount, media.MaxMediaServicesPerType())})
+		}
+
 		for i, svc := range services {
 			label := fmt.Sprintf("%s[%d]", kind, i)
 			if !svc.Enabled {

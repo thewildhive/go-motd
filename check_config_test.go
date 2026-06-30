@@ -48,6 +48,24 @@ func TestValidateConfigAllowsLoopbackHTTP(t *testing.T) {
 	}
 }
 
+func TestValidateConfigTooManyEnabledServices(t *testing.T) {
+	cfg := config.Config{}
+	for i := 0; i < 33; i++ {
+		cfg.Services.Plex = append(cfg.Services.Plex, config.ServiceConfig{URL: "https://plex.example.com", Token: "key", Enabled: true})
+	}
+
+	issues := validateConfig(cfg)
+	found := false
+	for _, issue := range issues {
+		if issue.Level == "error" && strings.Contains(issue.Message, "maximum") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected service count error, got %+v", issues)
+	}
+}
+
 func TestCheckConfigValidFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.json")
 	if err := config.Write(path, config.Config{}); err != nil {

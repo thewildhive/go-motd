@@ -9,10 +9,27 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"motd/config"
 	"motd/display"
 )
+
+type blockingTestService struct {
+	name    string
+	entered chan struct{}
+	release chan struct{}
+}
+
+func (s blockingTestService) Name() string {
+	return s.name
+}
+
+func (s blockingTestService) Render(_ *http.Client, _ bool) (string, string, bool) {
+	s.entered <- struct{}{}
+	<-s.release
+	return "ok", display.Green, true
+}
 
 func TestParseARRMissingCount(t *testing.T) {
 	withTotal := arrWantedMissingResponse{TotalRecords: 42, Records: []json.RawMessage{json.RawMessage(`{}`)}}
@@ -474,6 +491,58 @@ func TestHasMediaServicesRequiresValidURL(t *testing.T) {
 	cfg.Services.Plex[0].URL = "http://localhost:32400"
 	if !HasMediaServices(cfg, nil) {
 		t.Fatal("expected HasMediaServices to accept loopback plaintext HTTP")
+	}
+}
+
+func TestAllServicesCapsServicesPerType(t *testing.T) {
+	cfg := config.Config{}
+	for i := 0; i < MaxMediaServicesPerType()+5; i++ {
+		cfg.Services.Plex = append(cfg.Services.Plex, config.ServiceConfig{
+			Name:    fmt.Sprintf("Plex%d", i),
+			URL:     "https://plex.example.com",
+			Token:   "secret",
+			Enabled: true,
+		})
+	}
+
+	services := AllServices(cfg, nil)
+	if got := len(services); got != MaxMediaServicesPerType() {
+		t.Fatalf("expected %d services, got %d", MaxMediaServicesPerType(), got)
+	}
+}
+
+func TestCollectMediaStatusesLimitsConcurrency(t *testing.T) {
+	serviceCount := MaxConcurrentMediaChecks() + 3
+	entered := make(chan struct{}, serviceCount)
+	release := make(chan struct{})
+	services := make([]Service, 0, serviceCount)
+	for i := 0; i < serviceCount; i++ {
+		services = append(services, blockingTestService{name: fmt.Sprintf("svc%d", i), entered: entered, release: release})
+	}
+
+	done := make(chan []MediaStatus, 1)
+	go func() {
+		done <- collectMediaStatuses(services, &http.Client{}, false)
+	}()
+
+	for i := 0; i < MaxConcurrentMediaChecks(); i++ {
+		select {
+		case <-entered:
+		case <-time.After(time.Second):
+			t.Fatalf("timed out waiting for service %d to start", i)
+		}
+	}
+
+	select {
+	case <-entered:
+		t.Fatalf("more than %d services ran concurrently", MaxConcurrentMediaChecks())
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	close(release)
+	results := <-done
+	if got := len(results); got != serviceCount {
+		t.Fatalf("expected %d results, got %d", serviceCount, got)
 	}
 }
 
