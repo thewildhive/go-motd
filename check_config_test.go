@@ -66,6 +66,24 @@ func TestValidateConfigTooManyEnabledServices(t *testing.T) {
 	}
 }
 
+func TestCheckConfigMissingExplicitFileReturnsError(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "missing.json")
+	issues, _, err := checkConfig(path)
+	if err == nil || !hasErrorIssue(issues) {
+		t.Fatalf("expected explicit missing config error, issues=%+v err=%v", issues, err)
+	}
+	if !strings.Contains(err.Error(), path) {
+		t.Fatalf("expected error to include missing path %q, got %v", path, err)
+	}
+}
+
+func TestCheckConfigMissingDefaultFileAllowsSystemOnlyMode(t *testing.T) {
+	issues, _, err := checkConfig("")
+	if err != nil || hasErrorIssue(issues) {
+		t.Fatalf("expected missing default config to allow system-only mode, issues=%+v err=%v", issues, err)
+	}
+}
+
 func TestCheckConfigValidFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "config.json")
 	if err := config.Write(path, config.Config{}); err != nil {
