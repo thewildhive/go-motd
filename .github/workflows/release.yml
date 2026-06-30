@@ -150,21 +150,7 @@ jobs:
         run: |
           PREV="${{ steps.previous_tag.outputs.value }}"
           DATE=$(date -u +%Y-%m-%d)
-          {
-            printf '## [%s] - %s\n\n' "${{ steps.version.outputs.tag }}" "$DATE"
-            if [ -n "$PREV" ]; then
-              git log "$PREV"..HEAD --no-merges \
-                --format='- %s (%h)' \
-                --grep='^feat:\|^fix:\|^perf:\|^refactor:\|^build:\|^docs:' \
-                2>/dev/null || true
-            else
-              git log HEAD --no-merges \
-                --format='- %s (%h)' \
-                --grep='^feat:\|^fix:\|^perf:\|^refactor:\|^build:\|^docs:' \
-                2>/dev/null || true
-            fi
-            printf '\n'
-          } > /tmp/release-notes.md
+          bash .github/scripts/generate-changelog-entry.sh "$PREV" HEAD "${{ steps.version.outputs.tag }}" "$DATE" > /tmp/release-notes.md
 
       - name: Build release binaries
         if: ${{ steps.version.outputs.needed == 'true' || steps.manual_release.outputs.released == 'true' }}
@@ -238,21 +224,7 @@ jobs:
           PREV_TAG: ${{ steps.previous_tag.outputs.value }}
         run: |
           DATE=$(date -u +%Y-%m-%d)
-          {
-            printf '## [%s] - %s\n\n' "${{ steps.version.outputs.tag }}" "$DATE"
-            if [ -n "$PREV_TAG" ]; then
-              git log "$PREV_TAG"..HEAD --no-merges \
-                --format='- %s (%h)' \
-                --grep='^feat:\|^fix:\|^perf:\|^refactor:\|^build:\|^docs:' \
-                2>/dev/null || true
-            else
-              git log HEAD --no-merges \
-                --format='- %s (%h)' \
-                --grep='^feat:\|^fix:\|^perf:\|^refactor:\|^build:\|^docs:' \
-                2>/dev/null || true
-            fi
-            printf '\n'
-          } > /tmp/changelog-entry.md
+          bash .github/scripts/generate-changelog-entry.sh "$PREV_TAG" HEAD "${{ steps.version.outputs.tag }}" "$DATE" > /tmp/changelog-entry.md
 
           if [ -f CHANGELOG.md ]; then
             cat /tmp/changelog-entry.md CHANGELOG.md > /tmp/new-changelog.md
