@@ -54,7 +54,7 @@ func validateConfig(cfg config.Config) []configIssue {
 				issues = append(issues, configIssue{Level: "error", Message: label + " has an invalid url"})
 			}
 			if media.IsPlaintextToRemote(svc.URL) {
-				issues = append(issues, configIssue{Level: "warning", Message: label + " sends credentials over plaintext HTTP"})
+				issues = append(issues, configIssue{Level: "error", Message: label + " sends credentials over plaintext HTTP"})
 			}
 		}
 	}

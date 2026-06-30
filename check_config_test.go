@@ -24,18 +24,27 @@ func TestValidateConfigNoSettingsOK(t *testing.T) {
 	}
 }
 
-func TestValidateConfigPlainHTTPWarning(t *testing.T) {
+func TestValidateConfigPlainHTTPError(t *testing.T) {
 	cfg := config.Config{}
 	cfg.Services.Sonarr = []config.ServiceConfig{{URL: "http://sonarr:8989", APIKey: "key", Enabled: true}}
 	issues := validateConfig(cfg)
 	found := false
 	for _, issue := range issues {
-		if issue.Level == "warning" && strings.Contains(issue.Message, "plaintext") {
+		if issue.Level == "error" && strings.Contains(issue.Message, "plaintext") {
 			found = true
 		}
 	}
 	if !found {
-		t.Fatalf("expected plaintext warning, got %+v", issues)
+		t.Fatalf("expected plaintext error, got %+v", issues)
+	}
+}
+
+func TestValidateConfigAllowsLoopbackHTTP(t *testing.T) {
+	cfg := config.Config{}
+	cfg.Services.Sonarr = []config.ServiceConfig{{URL: "http://127.0.0.1:8989", APIKey: "key", Enabled: true}}
+	issues := validateConfig(cfg)
+	if hasErrorIssue(issues) {
+		t.Fatalf("expected loopback HTTP to be allowed, got %+v", issues)
 	}
 }
 

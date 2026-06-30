@@ -247,16 +247,20 @@ func IsValidURL(rawURL string) bool {
 	return true
 }
 
+func IsAllowedServiceURL(rawURL string) bool {
+	return IsValidURL(rawURL) && !IsPlaintextToRemote(rawURL)
+}
+
 func isPlexReady(plex config.ServiceConfig) bool {
-	return plex.Enabled && IsValidURL(plex.URL) && plex.Token != ""
+	return plex.Enabled && IsAllowedServiceURL(plex.URL) && plex.Token != ""
 }
 
 func isJellyfinReady(jellyfin config.ServiceConfig) bool {
-	return jellyfin.Enabled && IsValidURL(jellyfin.URL) && jellyfin.Token != ""
+	return jellyfin.Enabled && IsAllowedServiceURL(jellyfin.URL) && jellyfin.Token != ""
 }
 
 func isAPIServiceReady(service config.ServiceConfig) bool {
-	return service.Enabled && IsValidURL(service.URL) && service.APIKey != ""
+	return service.Enabled && IsAllowedServiceURL(service.URL) && service.APIKey != ""
 }
 
 func formatMediaLine(label, text, color string) string {
