@@ -16,7 +16,11 @@ import (
 	"motd/util"
 )
 
-const maxMediaResponseSize = 10 << 20 // 10 MB
+const (
+	maxMediaResponseSize     = 10 << 20
+	maxMediaServicesPerType  = 32
+	maxConcurrentMediaChecks = 8
+)
 
 type Service interface {
 	Name() string
@@ -98,12 +102,12 @@ type MediaStatus struct {
 
 func AllServices(cfg config.Config, selected map[string]bool) []Service {
 	out := make([]Service, 0,
-		len(cfg.Services.Plex)+len(cfg.Services.Jellyfin)+
-			len(cfg.Services.Sonarr)+len(cfg.Services.Radarr)+
-			len(cfg.Services.Seerr))
+		cappedServiceCount(len(cfg.Services.Plex))+cappedServiceCount(len(cfg.Services.Jellyfin))+
+			cappedServiceCount(len(cfg.Services.Sonarr))+cappedServiceCount(len(cfg.Services.Radarr))+
+			cappedServiceCount(len(cfg.Services.Seerr)))
 
 	for i := range cfg.Services.Plex {
-		if !serviceSelected(selected, "plex") {
+		if !serviceSelected(selected, "plex") || i >= MaxMediaServicesPerType() {
 			break
 		}
 		if isPlexReady(cfg.Services.Plex[i]) {
@@ -111,7 +115,7 @@ func AllServices(cfg config.Config, selected map[string]bool) []Service {
 		}
 	}
 	for i := range cfg.Services.Jellyfin {
-		if !serviceSelected(selected, "jellyfin") {
+		if !serviceSelected(selected, "jellyfin") || i >= MaxMediaServicesPerType() {
 			break
 		}
 		if isJellyfinReady(cfg.Services.Jellyfin[i]) {
@@ -119,7 +123,7 @@ func AllServices(cfg config.Config, selected map[string]bool) []Service {
 		}
 	}
 	for i := range cfg.Services.Sonarr {
-		if !serviceSelected(selected, "sonarr") {
+		if !serviceSelected(selected, "sonarr") || i >= MaxMediaServicesPerType() {
 			break
 		}
 		if isAPIServiceReady(cfg.Services.Sonarr[i]) {
@@ -127,7 +131,7 @@ func AllServices(cfg config.Config, selected map[string]bool) []Service {
 		}
 	}
 	for i := range cfg.Services.Radarr {
-		if !serviceSelected(selected, "radarr") {
+		if !serviceSelected(selected, "radarr") || i >= MaxMediaServicesPerType() {
 			break
 		}
 		if isAPIServiceReady(cfg.Services.Radarr[i]) {
@@ -135,7 +139,7 @@ func AllServices(cfg config.Config, selected map[string]bool) []Service {
 		}
 	}
 	for i := range cfg.Services.Seerr {
-		if !serviceSelected(selected, "seerr") {
+		if !serviceSelected(selected, "seerr") || i >= MaxMediaServicesPerType() {
 			break
 		}
 		if isAPIServiceReady(cfg.Services.Seerr[i]) {
@@ -143,6 +147,21 @@ func AllServices(cfg config.Config, selected map[string]bool) []Service {
 		}
 	}
 	return out
+}
+
+func MaxMediaServicesPerType() int {
+	return maxMediaServicesPerType
+}
+
+func MaxConcurrentMediaChecks() int {
+	return maxConcurrentMediaChecks
+}
+
+func cappedServiceCount(count int) int {
+	if count > MaxMediaServicesPerType() {
+		return MaxMediaServicesPerType()
+	}
+	return count
 }
 
 func serviceSelected(selected map[string]bool, name string) bool {
@@ -172,6 +191,11 @@ func CollectMediaStatuses(cfg config.Config, selected map[string]bool, client *h
 func collectMediaStatuses(services []Service, client *http.Client, debug bool) []MediaStatus {
 	var wg sync.WaitGroup
 	results := make(chan MediaStatus, len(services))
+	limit := MaxConcurrentMediaChecks()
+	if limit > len(services) {
+		limit = len(services)
+	}
+	semaphore := make(chan struct{}, limit)
 	order := 0
 
 	start := func(svc Service) {
@@ -180,6 +204,8 @@ func collectMediaStatuses(services []Service, client *http.Client, debug bool) [
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+			semaphore <- struct{}{}
+			defer func() { <-semaphore }()
 			text, color, ok := svc.Render(client, debug)
 			if ok {
 				results <- MediaStatus{Order: currentOrder, Name: svc.Name(), Text: text, Color: color}
@@ -247,16 +273,20 @@ func IsValidURL(rawURL string) bool {
 	return true
 }
 
+func IsAllowedServiceURL(rawURL string) bool {
+	return IsValidURL(rawURL) && !IsPlaintextToRemote(rawURL)
+}
+
 func isPlexReady(plex config.ServiceConfig) bool {
-	return plex.Enabled && IsValidURL(plex.URL) && plex.Token != ""
+	return plex.Enabled && IsAllowedServiceURL(plex.URL) && plex.Token != ""
 }
 
 func isJellyfinReady(jellyfin config.ServiceConfig) bool {
-	return jellyfin.Enabled && IsValidURL(jellyfin.URL) && jellyfin.Token != ""
+	return jellyfin.Enabled && IsAllowedServiceURL(jellyfin.URL) && jellyfin.Token != ""
 }
 
 func isAPIServiceReady(service config.ServiceConfig) bool {
-	return service.Enabled && IsValidURL(service.URL) && service.APIKey != ""
+	return service.Enabled && IsAllowedServiceURL(service.URL) && service.APIKey != ""
 }
 
 func formatMediaLine(label, text, color string) string {

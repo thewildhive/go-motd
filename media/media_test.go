@@ -9,10 +9,27 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"motd/config"
 	"motd/display"
 )
+
+type blockingTestService struct {
+	name    string
+	entered chan struct{}
+	release chan struct{}
+}
+
+func (s blockingTestService) Name() string {
+	return s.name
+}
+
+func (s blockingTestService) Render(_ *http.Client, _ bool) (string, string, bool) {
+	s.entered <- struct{}{}
+	<-s.release
+	return "ok", display.Green, true
+}
 
 func TestParseARRMissingCount(t *testing.T) {
 	withTotal := arrWantedMissingResponse{TotalRecords: 42, Records: []json.RawMessage{json.RawMessage(`{}`)}}
@@ -242,9 +259,9 @@ func TestHasMediaServicesRequiresURLAndCredentials(t *testing.T) {
 		{
 			name:        "plex",
 			missingURL:  config.ServiceConfig{Enabled: true, Token: "secret"},
-			missingAuth: config.ServiceConfig{URL: "http://plex:32400", Enabled: true},
-			ready:       config.ServiceConfig{URL: "http://plex:32400", Token: "secret", Enabled: true},
-			disabled:    config.ServiceConfig{URL: "http://plex:32400", Token: "secret", Enabled: false},
+			missingAuth: config.ServiceConfig{URL: "https://plex:32400", Enabled: true},
+			ready:       config.ServiceConfig{URL: "https://plex:32400", Token: "secret", Enabled: true},
+			disabled:    config.ServiceConfig{URL: "https://plex:32400", Token: "secret", Enabled: false},
 			apply: func(cfg *config.Config, service config.ServiceConfig) {
 				cfg.Services.Plex = []config.ServiceConfig{service}
 			},
@@ -252,9 +269,9 @@ func TestHasMediaServicesRequiresURLAndCredentials(t *testing.T) {
 		{
 			name:        "jellyfin",
 			missingURL:  config.ServiceConfig{Enabled: true, Token: "secret"},
-			missingAuth: config.ServiceConfig{URL: "http://jellyfin:8096", Enabled: true},
-			ready:       config.ServiceConfig{URL: "http://jellyfin:8096", Token: "secret", Enabled: true},
-			disabled:    config.ServiceConfig{URL: "http://jellyfin:8096", Token: "secret", Enabled: false},
+			missingAuth: config.ServiceConfig{URL: "https://jellyfin:8096", Enabled: true},
+			ready:       config.ServiceConfig{URL: "https://jellyfin:8096", Token: "secret", Enabled: true},
+			disabled:    config.ServiceConfig{URL: "https://jellyfin:8096", Token: "secret", Enabled: false},
 			apply: func(cfg *config.Config, service config.ServiceConfig) {
 				cfg.Services.Jellyfin = []config.ServiceConfig{service}
 			},
@@ -262,9 +279,9 @@ func TestHasMediaServicesRequiresURLAndCredentials(t *testing.T) {
 		{
 			name:        "sonarr",
 			missingURL:  config.ServiceConfig{Enabled: true, APIKey: "secret"},
-			missingAuth: config.ServiceConfig{URL: "http://sonarr:8989", Enabled: true},
-			ready:       config.ServiceConfig{URL: "http://sonarr:8989", APIKey: "secret", Enabled: true},
-			disabled:    config.ServiceConfig{URL: "http://sonarr:8989", APIKey: "secret", Enabled: false},
+			missingAuth: config.ServiceConfig{URL: "https://sonarr:8989", Enabled: true},
+			ready:       config.ServiceConfig{URL: "https://sonarr:8989", APIKey: "secret", Enabled: true},
+			disabled:    config.ServiceConfig{URL: "https://sonarr:8989", APIKey: "secret", Enabled: false},
 			apply: func(cfg *config.Config, service config.ServiceConfig) {
 				cfg.Services.Sonarr = []config.ServiceConfig{service}
 			},
@@ -272,9 +289,9 @@ func TestHasMediaServicesRequiresURLAndCredentials(t *testing.T) {
 		{
 			name:        "radarr",
 			missingURL:  config.ServiceConfig{Enabled: true, APIKey: "secret"},
-			missingAuth: config.ServiceConfig{URL: "http://radarr:7878", Enabled: true},
-			ready:       config.ServiceConfig{URL: "http://radarr:7878", APIKey: "secret", Enabled: true},
-			disabled:    config.ServiceConfig{URL: "http://radarr:7878", APIKey: "secret", Enabled: false},
+			missingAuth: config.ServiceConfig{URL: "https://radarr:7878", Enabled: true},
+			ready:       config.ServiceConfig{URL: "https://radarr:7878", APIKey: "secret", Enabled: true},
+			disabled:    config.ServiceConfig{URL: "https://radarr:7878", APIKey: "secret", Enabled: false},
 			apply: func(cfg *config.Config, service config.ServiceConfig) {
 				cfg.Services.Radarr = []config.ServiceConfig{service}
 			},
@@ -282,9 +299,9 @@ func TestHasMediaServicesRequiresURLAndCredentials(t *testing.T) {
 		{
 			name:        "seerr",
 			missingURL:  config.ServiceConfig{Enabled: true, APIKey: "secret"},
-			missingAuth: config.ServiceConfig{URL: "http://seerr:5055", Enabled: true},
-			ready:       config.ServiceConfig{URL: "http://seerr:5055", APIKey: "secret", Enabled: true},
-			disabled:    config.ServiceConfig{URL: "http://seerr:5055", APIKey: "secret", Enabled: false},
+			missingAuth: config.ServiceConfig{URL: "https://seerr:5055", Enabled: true},
+			ready:       config.ServiceConfig{URL: "https://seerr:5055", APIKey: "secret", Enabled: true},
+			disabled:    config.ServiceConfig{URL: "https://seerr:5055", APIKey: "secret", Enabled: false},
 			apply: func(cfg *config.Config, service config.ServiceConfig) {
 				cfg.Services.Seerr = []config.ServiceConfig{service}
 			},
@@ -434,9 +451,21 @@ func TestIsPlexReadyRejectsMalformedURL(t *testing.T) {
 		t.Fatal("expected malformed URL to make plex not ready")
 	}
 
-	cfg.URL = "http://valid:32400"
+	cfg.URL = "https://valid:32400"
 	if !isPlexReady(cfg) {
 		t.Fatal("expected valid URL to make plex ready")
+	}
+}
+
+func TestReadyChecksRejectRemotePlaintextHTTP(t *testing.T) {
+	cfg := config.ServiceConfig{Enabled: true, URL: "http://plex:32400", Token: "secret", APIKey: "secret"}
+	if isPlexReady(cfg) || isJellyfinReady(cfg) || isAPIServiceReady(cfg) {
+		t.Fatal("expected remote plaintext HTTP to make services not ready")
+	}
+
+	cfg.URL = "http://127.0.0.1:32400"
+	if !isPlexReady(cfg) || !isJellyfinReady(cfg) || !isAPIServiceReady(cfg) {
+		t.Fatal("expected loopback plaintext HTTP to remain ready")
 	}
 }
 
@@ -449,9 +478,71 @@ func TestHasMediaServicesRequiresValidURL(t *testing.T) {
 		t.Fatal("expected HasMediaServices to reject malformed URL")
 	}
 
-	cfg.Services.Plex[0].URL = "http://plex:32400"
+	cfg.Services.Plex[0].URL = "https://plex:32400"
 	if !HasMediaServices(cfg, nil) {
 		t.Fatal("expected HasMediaServices to accept valid URL")
+	}
+
+	cfg.Services.Plex[0].URL = "http://plex:32400"
+	if HasMediaServices(cfg, nil) {
+		t.Fatal("expected HasMediaServices to reject remote plaintext HTTP")
+	}
+
+	cfg.Services.Plex[0].URL = "http://localhost:32400"
+	if !HasMediaServices(cfg, nil) {
+		t.Fatal("expected HasMediaServices to accept loopback plaintext HTTP")
+	}
+}
+
+func TestAllServicesCapsServicesPerType(t *testing.T) {
+	cfg := config.Config{}
+	for i := 0; i < MaxMediaServicesPerType()+5; i++ {
+		cfg.Services.Plex = append(cfg.Services.Plex, config.ServiceConfig{
+			Name:    fmt.Sprintf("Plex%d", i),
+			URL:     "https://plex.example.com",
+			Token:   "secret",
+			Enabled: true,
+		})
+	}
+
+	services := AllServices(cfg, nil)
+	if got := len(services); got != MaxMediaServicesPerType() {
+		t.Fatalf("expected %d services, got %d", MaxMediaServicesPerType(), got)
+	}
+}
+
+func TestCollectMediaStatusesLimitsConcurrency(t *testing.T) {
+	serviceCount := MaxConcurrentMediaChecks() + 3
+	entered := make(chan struct{}, serviceCount)
+	release := make(chan struct{})
+	services := make([]Service, 0, serviceCount)
+	for i := 0; i < serviceCount; i++ {
+		services = append(services, blockingTestService{name: fmt.Sprintf("svc%d", i), entered: entered, release: release})
+	}
+
+	done := make(chan []MediaStatus, 1)
+	go func() {
+		done <- collectMediaStatuses(services, &http.Client{}, false)
+	}()
+
+	for i := 0; i < MaxConcurrentMediaChecks(); i++ {
+		select {
+		case <-entered:
+		case <-time.After(time.Second):
+			t.Fatalf("timed out waiting for service %d to start", i)
+		}
+	}
+
+	select {
+	case <-entered:
+		t.Fatalf("more than %d services ran concurrently", MaxConcurrentMediaChecks())
+	case <-time.After(50 * time.Millisecond):
+	}
+
+	close(release)
+	results := <-done
+	if got := len(results); got != serviceCount {
+		t.Fatalf("expected %d results, got %d", serviceCount, got)
 	}
 }
 

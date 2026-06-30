@@ -345,8 +345,19 @@ main() {
     print_info "For more information: https://github.com/thewildhive/go-motd"
 }
 
+require_option_value() {
+    local option="$1"
+    local value="${2:-}"
+
+    if [ -z "$value" ] || [[ "$value" == -* ]]; then
+        print_error "Option $option requires a value"
+        echo "Use --help for usage information"
+        exit 1
+    fi
+}
+
 # Check if running with --help flag
-if [ "$1" = "--help" ] || [ "$1" = "-h" ]; then
+if [ "${1:-}" = "--help" ] || [ "${1:-}" = "-h" ]; then
     echo "go-motd installer"
     echo
     echo "Usage: $0 [OPTIONS]"
@@ -371,10 +382,12 @@ fi
 while [[ $# -gt 0 ]]; do
     case $1 in
         -d|--dir)
+            require_option_value "$1" "${2:-}"
             INSTALL_DIR="$2"
             shift 2
             ;;
         -c|--config-dir)
+            require_option_value "$1" "${2:-}"
             CONFIG_DIR="$2"
             shift 2
             ;;

@@ -49,6 +49,17 @@ func TestCompareVersions(t *testing.T) {
 		{current: "1.0.0", latest: "1.0.1", expect: -1},
 		{current: "1.2.0", latest: "1.2.0", expect: 0},
 		{current: "2.0.0", latest: "1.9.9", expect: 1},
+		{current: "1.0.0-rc.1", latest: "1.0.0", expect: -1},
+		{current: "1.0.0", latest: "1.0.0-rc.1", expect: 1},
+		{current: "1.0.0-alpha.1", latest: "1.0.0-alpha.2", expect: -1},
+		{current: "1.0.0-alpha.2", latest: "1.0.0-alpha.10", expect: -1},
+		{current: "1.0.0-alpha", latest: "1.0.0-alpha.1", expect: -1},
+		{current: "v1.2.3", latest: "1.2.3", expect: 0},
+		{current: "1.2.3+build.1", latest: "1.2.3+build.2", expect: 0},
+		{current: "1.2", latest: "1.2.0", expect: 0},
+		{current: "1.2", latest: "1.2.1", expect: -1},
+		{current: "bad", latest: "1.0.0", expect: 1},
+		{current: "1.0.0", latest: "bad", expect: -1},
 	}
 
 	for _, tt := range tests {
@@ -106,6 +117,20 @@ func TestDownloadBinaryRejectsChecksumMismatch(t *testing.T) {
 	_, err := downloadBinary(server.URL, "motd-linux-amd64", map[string]string{"motd-linux-amd64": "bad"}, t.TempDir(), client)
 	if err == nil || !strings.Contains(err.Error(), "checksum verification failed") {
 		t.Fatalf("expected checksum mismatch error, got %v", err)
+	}
+}
+
+func TestWindowsCmdPathUsesSystemRoot(t *testing.T) {
+	got := windowsCmdPath(`C:\Windows`)
+	want := filepath.Join(`C:\Windows`, "System32", "cmd.exe")
+	if got != want {
+		t.Fatalf("windowsCmdPath()=%q want %q", got, want)
+	}
+}
+
+func TestWindowsCmdPathFallsBackToSystemDirectory(t *testing.T) {
+	if got := windowsCmdPath(""); got != `C:\Windows\System32\cmd.exe` {
+		t.Fatalf("windowsCmdPath()=%q", got)
 	}
 }
 
