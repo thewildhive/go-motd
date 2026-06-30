@@ -196,10 +196,10 @@ jobs:
             exit 1
           fi
           KEY_FILE=$(mktemp)
+          trap 'rm -f "$KEY_FILE"' EXIT
           chmod 600 "$KEY_FILE"
           printf '%s' "$SIGNING_KEY" > "$KEY_FILE"
           openssl pkeyutl -sign -inkey "$KEY_FILE" -rawin -in release/checksums.txt -out release/checksums.txt.sig
-          rm -f "$KEY_FILE"
 
       - name: Package release artifacts
         if: ${{ steps.version.outputs.needed == 'true' || steps.manual_release.outputs.released == 'true' }}
@@ -227,10 +227,10 @@ jobs:
             exit 1
           fi
           KEY_FILE=$(mktemp)
+          trap 'rm -f "$KEY_FILE"' EXIT
           chmod 600 "$KEY_FILE"
           printf '%s' "$SIGNING_KEY" > "$KEY_FILE"
           openssl pkeyutl -sign -inkey "$KEY_FILE" -rawin -in release/archive-checksums.txt -out release/archive-checksums.txt.sig
-          rm -f "$KEY_FILE"
 
       - name: Update CHANGELOG.md
         if: steps.version.outputs.needed == 'true'
