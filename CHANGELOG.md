@@ -1,3 +1,7 @@
+## [v1.7.2] - 2026-06-30
+
+- fix: correct git log --grep alternation escaping in changelog generation (83e8d7f)
+
 ## [v1.7.1] - 2026-06-29
 
 - fix: guard release version collisions in version resolver (e9445dd)
