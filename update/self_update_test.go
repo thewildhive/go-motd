@@ -109,6 +109,20 @@ func TestDownloadBinaryRejectsChecksumMismatch(t *testing.T) {
 	}
 }
 
+func TestWindowsCmdPathUsesSystemRoot(t *testing.T) {
+	got := windowsCmdPath(`C:\Windows`)
+	want := filepath.Join(`C:\Windows`, "System32", "cmd.exe")
+	if got != want {
+		t.Fatalf("windowsCmdPath()=%q want %q", got, want)
+	}
+}
+
+func TestWindowsCmdPathFallsBackToSystemDirectory(t *testing.T) {
+	if got := windowsCmdPath(""); got != `C:\Windows\System32\cmd.exe` {
+		t.Fatalf("windowsCmdPath()=%q", got)
+	}
+}
+
 func TestWindowsBatchPath(t *testing.T) {
 	if got := windowsBatchPath(`C:/Temp/motd-update.tmp`); got != `C:\Temp\motd-update.tmp` {
 		t.Fatalf("unexpected Windows batch path: %q", got)

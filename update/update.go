@@ -492,6 +492,13 @@ func downloadBinary(url, filename string, checksums map[string]string, tempDir s
 	return tmpPath, nil
 }
 
+func windowsCmdPath(systemRoot string) string {
+	if systemRoot == "" {
+		return `C:\Windows\System32\cmd.exe`
+	}
+	return filepath.Join(systemRoot, "System32", "cmd.exe")
+}
+
 func replaceBinary(tempPath, execPath, backupPath string) error {
 	if err := os.Chmod(tempPath, 0755); err != nil {
 		return fmt.Errorf("failed to make binary executable: %w", err)
@@ -522,7 +529,7 @@ del "%s"
 			return fmt.Errorf("failed to write update script: %w", err)
 		}
 
-		cmd := exec.Command("cmd", "/c", batPath)
+		cmd := exec.Command(windowsCmdPath(os.Getenv("SystemRoot")), "/c", batPath)
 		if err := cmd.Start(); err != nil {
 			return fmt.Errorf("failed to start update script: %w", err)
 		}
