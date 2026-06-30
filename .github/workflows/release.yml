@@ -33,7 +33,7 @@ jobs:
       releasable: ${{ steps.changed.outputs.releasable }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v7
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
         with:
           fetch-depth: 0
 
@@ -64,7 +64,7 @@ jobs:
       RELEASE_TAG: ${{ github.event.inputs.tag || '' }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v7
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
         with:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
@@ -81,7 +81,7 @@ jobs:
           git checkout --detach "$RELEASE_TAG"
 
       - name: Set up Go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
         with:
           go-version-file: go.mod
           cache: true
@@ -282,7 +282,7 @@ jobs:
 
       - name: Create GitHub Release
         if: steps.version.outputs.needed == 'true'
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@7c4723f7a335432393329f8f1c564994ce50185d # v3
         with:
           tag_name: ${{ steps.version.outputs.tag }}
           body_path: /tmp/release-notes.md
@@ -294,7 +294,7 @@ jobs:
 
       - name: Upload rebuilt release assets
         if: ${{ github.event_name == 'workflow_dispatch' && steps.manual_release.outputs.released == 'true' }}
-        uses: softprops/action-gh-release@v3
+        uses: softprops/action-gh-release@7c4723f7a335432393329f8f1c564994ce50185d # v3
         with:
           tag_name: ${{ steps.manual_release.outputs.tag }}
           files: |
