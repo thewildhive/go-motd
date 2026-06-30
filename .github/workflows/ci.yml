@@ -9,14 +9,6 @@ on:
       - 'testdata/**'
       - 'LICENSE'
       - 'NOTICE'
-  push:
-    branches: [main]
-    paths-ignore:
-      - '*.md'
-      - 'docs/**'
-      - 'testdata/**'
-      - 'LICENSE'
-      - 'NOTICE'
 
 permissions:
   contents: read
