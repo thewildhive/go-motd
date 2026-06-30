@@ -49,6 +49,17 @@ func TestCompareVersions(t *testing.T) {
 		{current: "1.0.0", latest: "1.0.1", expect: -1},
 		{current: "1.2.0", latest: "1.2.0", expect: 0},
 		{current: "2.0.0", latest: "1.9.9", expect: 1},
+		{current: "1.0.0-rc.1", latest: "1.0.0", expect: -1},
+		{current: "1.0.0", latest: "1.0.0-rc.1", expect: 1},
+		{current: "1.0.0-alpha.1", latest: "1.0.0-alpha.2", expect: -1},
+		{current: "1.0.0-alpha.2", latest: "1.0.0-alpha.10", expect: -1},
+		{current: "1.0.0-alpha", latest: "1.0.0-alpha.1", expect: -1},
+		{current: "v1.2.3", latest: "1.2.3", expect: 0},
+		{current: "1.2.3+build.1", latest: "1.2.3+build.2", expect: 0},
+		{current: "1.2", latest: "1.2.0", expect: 0},
+		{current: "1.2", latest: "1.2.1", expect: -1},
+		{current: "bad", latest: "1.0.0", expect: 1},
+		{current: "1.0.0", latest: "bad", expect: -1},
 	}
 
 	for _, tt := range tests {

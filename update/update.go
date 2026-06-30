@@ -191,33 +191,115 @@ func getLatestRelease(client *http.Client) (*GitHubRelease, error) {
 	return &release, nil
 }
 
-func CompareVersions(current, latest string) int {
-	currentParts := strings.Split(current, ".")
-	latestParts := strings.Split(latest, ".")
+type semVersion struct {
+	parts      [3]int
+	prerelease []string
+	valid      bool
+}
 
-	maxLen := len(currentParts)
-	if len(latestParts) > maxLen {
-		maxLen = len(latestParts)
+func parseSemVersion(version string) semVersion {
+	version = strings.TrimPrefix(strings.TrimSpace(version), "v")
+	version, _, _ = strings.Cut(version, "+")
+	core, prerelease, hasPrerelease := strings.Cut(version, "-")
+	coreParts := strings.Split(core, ".")
+	if len(coreParts) == 0 || len(coreParts) > 3 {
+		return semVersion{}
 	}
 
-	for i := 0; i < maxLen; i++ {
-		var currentNum, latestNum int
-
-		if i < len(currentParts) {
-			currentNum, _ = strconv.Atoi(currentParts[i])
+	parsed := semVersion{valid: true}
+	for i, part := range coreParts {
+		if part == "" {
+			return semVersion{}
 		}
-		if i < len(latestParts) {
-			latestNum, _ = strconv.Atoi(latestParts[i])
+		num, err := strconv.Atoi(part)
+		if err != nil || num < 0 {
+			return semVersion{}
 		}
+		parsed.parts[i] = num
+	}
+	if hasPrerelease {
+		if prerelease == "" {
+			return semVersion{}
+		}
+		parsed.prerelease = strings.Split(prerelease, ".")
+		for _, identifier := range parsed.prerelease {
+			if identifier == "" {
+				return semVersion{}
+			}
+		}
+	}
 
-		if currentNum < latestNum {
+	return parsed
+}
+
+func CompareVersions(current, latest string) int {
+	currentVersion := parseSemVersion(current)
+	latestVersion := parseSemVersion(latest)
+	if !currentVersion.valid || !latestVersion.valid {
+		return strings.Compare(current, latest)
+	}
+
+	for i := 0; i < len(currentVersion.parts); i++ {
+		if currentVersion.parts[i] < latestVersion.parts[i] {
 			return -1
-		} else if currentNum > latestNum {
+		}
+		if currentVersion.parts[i] > latestVersion.parts[i] {
 			return 1
 		}
 	}
 
+	return comparePrerelease(currentVersion.prerelease, latestVersion.prerelease)
+}
+
+func comparePrerelease(current, latest []string) int {
+	if len(current) == 0 && len(latest) == 0 {
+		return 0
+	}
+	if len(current) == 0 {
+		return 1
+	}
+	if len(latest) == 0 {
+		return -1
+	}
+
+	maxLen := len(current)
+	if len(latest) > maxLen {
+		maxLen = len(latest)
+	}
+	for i := 0; i < maxLen; i++ {
+		if i >= len(current) {
+			return -1
+		}
+		if i >= len(latest) {
+			return 1
+		}
+		cmp := comparePrereleaseIdentifier(current[i], latest[i])
+		if cmp != 0 {
+			return cmp
+		}
+	}
 	return 0
+}
+
+func comparePrereleaseIdentifier(current, latest string) int {
+	currentNum, currentErr := strconv.Atoi(current)
+	latestNum, latestErr := strconv.Atoi(latest)
+	if currentErr == nil && latestErr == nil {
+		if currentNum < latestNum {
+			return -1
+		}
+		if currentNum > latestNum {
+			return 1
+		}
+		return 0
+	}
+	if currentErr == nil {
+		return -1
+	}
+	if latestErr == nil {
+		return 1
+	}
+	return strings.Compare(current, latest)
 }
 
 func (ch *Checker) performUpdate(release *GitHubRelease, version string, client *http.Client) error {
