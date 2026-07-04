@@ -38,6 +38,7 @@ jobs:
               - 'go.sum'
               - '.github/scripts/**'
               - '.github/workflows/ci.yml'
+              - '.github/workflows/release.yml'
 
   go:
     name: Go checks

@@ -10,13 +10,6 @@ on:
       - 'testdata/**'
       - 'LICENSE'
       - 'NOTICE'
-  workflow_dispatch:
-    inputs:
-      tag:
-        description: Existing release tag to rebuild/upload assets for, for example v1.2.3
-        required: false
-        type: string
-
 permissions:
   contents: read
 
@@ -28,7 +21,6 @@ jobs:
   changes:
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    if: ${{ github.event_name != 'workflow_dispatch' }}
     outputs:
       releasable: ${{ steps.changed.outputs.releasable }}
     steps:
@@ -55,30 +47,17 @@ jobs:
   release:
     name: Release
     needs: changes
-    if: ${{ (github.event_name == 'workflow_dispatch' || needs.changes.outputs.releasable == 'true') && (github.event_name == 'workflow_dispatch' || !contains(github.event.head_commit.message || '', 'chore(release)')) }}
+    if: ${{ needs.changes.outputs.releasable == 'true' && !contains(github.event.head_commit.message || '', 'chore(release)') }}
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
       contents: write
-    env:
-      RELEASE_TAG: ${{ github.event.inputs.tag || '' }}
     steps:
       - name: Checkout code
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
         with:
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Validate requested release tag
-        if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag != '' }}
-        run: |
-          set -euo pipefail
-          if ! [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
-            echo "Invalid release tag: $RELEASE_TAG"
-            exit 1
-          fi
-          git rev-parse --verify --quiet "refs/tags/${RELEASE_TAG}^{commit}" >/dev/null
-          git checkout --detach "$RELEASE_TAG"
 
       - name: Set up Go
         uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
@@ -89,7 +68,6 @@ jobs:
             go.sum
 
       - name: Install svu
-        if: ${{ github.event_name != 'workflow_dispatch' }}
         run: go install github.com/caarlos0/svu/v2@v2.2.0
 
       - name: Verify formatting
@@ -114,7 +92,6 @@ jobs:
 
       - name: Capture previous tag
         id: previous_tag
-        if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.tag == '' }}
         run: |
           tag=$(git describe --tags --abbrev=0 --match "v*" 2>/dev/null || true)
           printf 'value=%s\n' "$tag" >> "$GITHUB_OUTPUT"
@@ -122,7 +99,6 @@ jobs:
 
       - name: Determine next version
         id: version
-        if: ${{ github.event_name != 'workflow_dispatch' || github.event.inputs.tag == '' }}
         run: |
           eval "$(bash .github/scripts/determine-version.sh)"
           if [ -z "$version" ]; then
@@ -135,16 +111,6 @@ jobs:
             echo "Next version: $version"
           fi
 
-      - name: Resolve manual release metadata
-        id: manual_release
-        if: ${{ github.event_name == 'workflow_dispatch' && github.event.inputs.tag != '' }}
-        run: |
-          set -euo pipefail
-          VERSION="${RELEASE_TAG#v}"
-          echo "released=true" >> "$GITHUB_OUTPUT"
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-          echo "tag=$RELEASE_TAG" >> "$GITHUB_OUTPUT"
-
       - name: Generate changelog
         if: ${{ steps.version.outputs.needed == 'true' }}
         run: |
@@ -153,9 +119,9 @@ jobs:
           bash .github/scripts/generate-changelog-entry.sh "$PREV" HEAD "${{ steps.version.outputs.tag }}" "$DATE" > /tmp/release-notes.md
 
       - name: Build release binaries
-        if: ${{ steps.version.outputs.needed == 'true' || steps.manual_release.outputs.released == 'true' }}
+        if: ${{ steps.version.outputs.needed == 'true' }}
         env:
-          RELEASE_VERSION: ${{ steps.version.outputs.version || steps.manual_release.outputs.version }}
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
         run: |
           set -euo pipefail
           mkdir -p release
@@ -172,7 +138,7 @@ jobs:
           sha256sum motd-linux-amd64 motd-linux-arm64 motd-darwin-amd64 motd-darwin-arm64 motd-windows-amd64.exe > checksums.txt
 
       - name: Sign checksums.txt
-        if: ${{ steps.version.outputs.needed == 'true' || steps.manual_release.outputs.released == 'true' }}
+        if: ${{ steps.version.outputs.needed == 'true' }}
         env:
           SIGNING_KEY: ${{ secrets.SIGNING_PRIVATE_KEY }}
         run: |
@@ -188,9 +154,9 @@ jobs:
           openssl pkeyutl -sign -inkey "$KEY_FILE" -rawin -in release/checksums.txt -out release/checksums.txt.sig
 
       - name: Package release artifacts
-        if: ${{ steps.version.outputs.needed == 'true' || steps.manual_release.outputs.released == 'true' }}
+        if: ${{ steps.version.outputs.needed == 'true' }}
         env:
-          RELEASE_VERSION: ${{ steps.version.outputs.version || steps.manual_release.outputs.version }}
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
         run: |
           set -euo pipefail
           cd release
@@ -203,7 +169,7 @@ jobs:
           sha256sum *.tar.gz *.zip > archive-checksums.txt
 
       - name: Sign archive-checksums.txt
-        if: ${{ steps.version.outputs.needed == 'true' || steps.manual_release.outputs.released == 'true' }}
+        if: ${{ steps.version.outputs.needed == 'true' }}
         env:
           SIGNING_KEY: ${{ secrets.SIGNING_PRIVATE_KEY }}
         run: |
@@ -260,27 +226,6 @@ jobs:
           body_path: /tmp/release-notes.md
           files: |
             release/*
-          fail_on_unmatched_files: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Upload rebuilt release assets
-        if: ${{ github.event_name == 'workflow_dispatch' && steps.manual_release.outputs.released == 'true' }}
-        uses: softprops/action-gh-release@7c4723f7a335432393329f8f1c564994ce50185d # v3
-        with:
-          tag_name: ${{ steps.manual_release.outputs.tag }}
-          files: |
-            release/*.tar.gz
-            release/*.zip
-            release/motd-linux-amd64
-            release/motd-linux-arm64
-            release/motd-darwin-amd64
-            release/motd-darwin-arm64
-            release/motd-windows-amd64.exe
-            release/checksums.txt
-            release/checksums.txt.sig
-            release/archive-checksums.txt
-            release/archive-checksums.txt.sig
           fail_on_unmatched_files: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
