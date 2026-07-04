@@ -45,7 +45,7 @@ test: add unit tests for bandwidth monitoring
 
 ## Release Process
 
-Releases are automatically handled by the GitHub Actions release workflow on pushes to `main` (or manual dispatch):
+Releases are automatically handled by the GitHub Actions release workflow on pushes to `main`:
 
 1. **Quality gates**: `gofmt`, `go test`, `go vet`, and `go build` run first.
 2. **Semantic versioning**: [`svu`](https://github.com/caarlos0/svu) analyses conventional commits since the last tag and determines the next version.

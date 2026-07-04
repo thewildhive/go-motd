@@ -178,7 +178,7 @@ The self-update mechanism provides defense-in-depth against supply-chain attacks
 Operational assumptions:
 - The signing private key is stored as a GitHub repository secret (`SIGNING_PRIVATE_KEY`)
 - The corresponding public key is compiled into the binary (`checksumsPublicKeyHex`)
-- Releases are created by the CI pipeline — manual release uploads bypass signing
+- Releases are created by the CI pipeline; assets are signed during release automation
 - `motd self-update` requires write access to the binary's directory; use `sudo` or install to `~/.local/bin` if needed
 - Cross-device binary replacement uses a staged copy in the target directory before atomic rename
 
