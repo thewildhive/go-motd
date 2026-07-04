@@ -1,3 +1,9 @@
+## [v1.7.3] - 2026-07-04
+
+- fix: extract changelog entries from squash commit bodies (e6ad767)
+- docs: align release automation guidance (ea761b1)
+- build: update go to 1.26.4 (#46) (ac3f2f3)
+
 ## [v1.7.2] - 2026-06-30
 
 - fix: correct git log --grep alternation escaping in changelog generation (83e8d7f)
