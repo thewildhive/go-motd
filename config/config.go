@@ -70,11 +70,6 @@ func GetLegacyConfigPaths() []string {
 	return []string{userYML, userYAML, "/opt/motd/config.yml", "/opt/motd/config.yaml"}
 }
 
-func GetExplicitLegacyConfigPaths(configPath string) []string {
-	dir := filepath.Dir(configPath)
-	return []string{filepath.Join(dir, "config.yml"), filepath.Join(dir, "config.yaml")}
-}
-
 func DecodeJSONConfig(data []byte) (Config, error) {
 	var parsedConfig Config
 
@@ -134,6 +129,40 @@ func LoadJSONConfigFromPaths(paths []string, debugFn func(string, ...interface{}
 		debugFn("No JSON config files found")
 	}
 	return loadedConfig, ErrNoJSONConfig
+}
+
+func LoadJSONConfigFile(configPath string, debugFn func(string, ...interface{})) (Config, error) {
+	var loadedConfig Config
+
+	info, err := os.Stat(configPath)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return loadedConfig, fmt.Errorf("explicit config file does not exist: %s", configPath)
+		}
+		return loadedConfig, fmt.Errorf("failed to stat config file %s: %w", configPath, err)
+	}
+
+	if info.IsDir() {
+		return loadedConfig, fmt.Errorf("config file path is a directory: %s", configPath)
+	}
+
+	if debugFn != nil {
+		debugFn("Loading JSON config from: %s", configPath)
+	}
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return loadedConfig, fmt.Errorf("failed to read config file %s: %w", configPath, err)
+	}
+
+	parsedConfig, err := DecodeJSONConfig(data)
+	if err != nil {
+		return loadedConfig, fmt.Errorf("failed to parse JSON config %s: %w", configPath, err)
+	}
+
+	if debugFn != nil {
+		debugFn("Successfully loaded JSON config from: %s", configPath)
+	}
+	return parsedConfig, nil
 }
 
 func DetectLegacyYAMLConfig(legacyPaths, jsonPaths []string) *LegacyConfigError {
@@ -203,22 +232,22 @@ func Load(configPath string, noConfig bool, debugFn func(string, ...interface{})
 	}
 
 	if strings.TrimSpace(configPath) != "" {
-		return LoadFromPaths([]string{configPath}, GetExplicitLegacyConfigPaths(configPath), debugFn)
+		return LoadJSONConfigFile(configPath, debugFn)
 	}
 
 	return LoadFromPaths(GetConfigPaths(), GetLegacyConfigPaths(), debugFn)
 }
 
 func PrintLegacyConfigError(err *LegacyConfigError) {
-	fmt.Printf("%sError: Legacy YAML config is no longer supported.%s\n", display.Red, display.Reset)
+	fmt.Printf("%sError: Legacy YAML config is no longer supported in MOTD 2.0.%s\n", display.Red, display.Reset)
 	fmt.Printf("Found legacy config at: %s\n", err.LegacyPath)
 	if err.RequiredPath != "" {
 		fmt.Printf("Create a JSON config at: %s\n", err.RequiredPath)
-		fmt.Printf("Or migrate automatically with: motd -config %s -migrate\n", err.RequiredPath)
 	}
 	if err.FallbackPath != "" {
 		fmt.Printf("Fallback JSON path: %s\n", err.FallbackPath)
 	}
+	fmt.Println("See MIGRATE_v2.md for manual migration guidance.")
 }
 
 // AtomicWriteFile atomically writes data to path by writing to a temp file

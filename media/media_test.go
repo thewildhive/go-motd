@@ -4,8 +4,10 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"sync"
 	"testing"
@@ -29,6 +31,28 @@ func (s blockingTestService) Render(_ *http.Client, _ bool) (string, string, boo
 	s.entered <- struct{}{}
 	<-s.release
 	return "ok", display.Green, true
+}
+
+func captureStderr(t *testing.T, fn func()) string {
+	t.Helper()
+
+	oldStderr := os.Stderr
+	reader, writer, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("failed to create stderr pipe: %v", err)
+	}
+	os.Stderr = writer
+
+	fn()
+
+	_ = writer.Close()
+	os.Stderr = oldStderr
+	data, err := io.ReadAll(reader)
+	if err != nil {
+		t.Fatalf("failed to read stderr: %v", err)
+	}
+	_ = reader.Close()
+	return string(data)
 }
 
 func TestParseARRMissingCount(t *testing.T) {
@@ -466,6 +490,44 @@ func TestReadyChecksRejectRemotePlaintextHTTP(t *testing.T) {
 	cfg.URL = "http://127.0.0.1:32400"
 	if !isPlexReady(cfg) || !isJellyfinReady(cfg) || !isAPIServiceReady(cfg) {
 		t.Fatal("expected loopback plaintext HTTP to remain ready")
+	}
+}
+
+func TestCollectMediaStatusesDebugSkipReasons(t *testing.T) {
+	cfg := config.Config{}
+	cfg.Services.Plex = []config.ServiceConfig{{Name: "Disabled", URL: "https://plex.example.com", Token: "secret", Enabled: false}}
+	cfg.Services.Jellyfin = []config.ServiceConfig{{Name: "NoToken", URL: "https://jellyfin.example.com", Enabled: true}}
+	cfg.Services.Sonarr = []config.ServiceConfig{{Name: "BadURL", URL: "http//bad", APIKey: "secret", Enabled: true}}
+	cfg.Services.Radarr = []config.ServiceConfig{{Name: "RemoteHTTP", URL: "http://radarr.example.com", APIKey: "secret", Enabled: true}}
+
+	stderr := captureStderr(t, func() {
+		results := CollectMediaStatuses(cfg, nil, &http.Client{}, true)
+		if len(results) != 0 {
+			t.Fatalf("expected no ready services, got %+v", results)
+		}
+	})
+
+	for _, want := range []string{
+		"Skipping Plex (Disabled): disabled",
+		"Skipping Jellyfin (NoToken): missing credential: token",
+		"Skipping Sonarr (BadURL): invalid URL",
+		"Skipping Radarr (RemoteHTTP): remote HTTP blocked",
+	} {
+		if !strings.Contains(stderr, want) {
+			t.Fatalf("expected debug output to contain %q, got %q", want, stderr)
+		}
+	}
+}
+
+func TestCollectMediaStatusesSkipReasonsRequireDebug(t *testing.T) {
+	cfg := config.Config{}
+	cfg.Services.Plex = []config.ServiceConfig{{Name: "Disabled", URL: "https://plex.example.com", Token: "secret", Enabled: false}}
+
+	stderr := captureStderr(t, func() {
+		_ = CollectMediaStatuses(cfg, nil, &http.Client{}, false)
+	})
+	if stderr != "" {
+		t.Fatalf("expected no skip diagnostics with debug disabled, got %q", stderr)
 	}
 }
 

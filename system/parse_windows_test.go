@@ -171,6 +171,20 @@ func TestParseWindowsDiskCSV(t *testing.T) {
 	}
 }
 
+func TestParseWindowsDiskCSVQuotedPowerShellOutput(t *testing.T) {
+	output := []byte(`#TYPE Selected.Microsoft.Management.Infrastructure.CimInstance
+"C:","1000","250"
+"D:","2000","1000"
+`)
+	disks := parseWindowsDiskCSV(output)
+	if len(disks) != 2 {
+		t.Fatalf("expected 2 disks, got %d", len(disks))
+	}
+	if disks[0].Drive != "C:" || disks[0].TotalBytes != 1000 || disks[0].UsedBytes != 750 {
+		t.Fatalf("unexpected first disk: %+v", disks[0])
+	}
+}
+
 func TestParseWindowsDiskWMIC(t *testing.T) {
 	disks := parseWindowsDiskWMIC([]byte(`DeviceID=C:\
 FreeSpace=250

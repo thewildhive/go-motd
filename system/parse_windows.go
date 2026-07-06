@@ -3,6 +3,8 @@
 package system
 
 import (
+	"bytes"
+	"encoding/csv"
 	"strconv"
 	"strings"
 	"time"
@@ -214,13 +216,22 @@ func parseWindowsMemoryKB(output []byte) (uint64, uint64, bool) {
 
 func parseWindowsDiskCSV(output []byte) []windowsDiskInfo {
 	var disks []windowsDiskInfo
-	for _, line := range strings.Split(string(output), "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
+
+	reader := csv.NewReader(bytes.NewReader(output))
+	reader.FieldsPerRecord = -1
+	records, err := reader.ReadAll()
+	if err != nil {
+		return disks
+	}
+
+	for _, parts := range records {
+		if len(parts) < 3 {
 			continue
 		}
-		parts := strings.Split(line, ",")
-		if len(parts) < 3 {
+		if len(parts) > 3 {
+			parts = parts[len(parts)-3:]
+		}
+		if strings.EqualFold(strings.TrimSpace(parts[0]), "DeviceID") {
 			continue
 		}
 		drive := strings.TrimSpace(parts[0])

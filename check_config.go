@@ -1,7 +1,6 @@
 package main
 
 import (
-	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -18,23 +17,8 @@ func flagSet(name string) *flag.FlagSet {
 }
 
 func checkConfig(configPath string) ([]configIssue, config.Config, error) {
-	if configPath != "" {
-		if _, err := os.Stat(configPath); err != nil {
-			if errors.Is(err, os.ErrNotExist) {
-				legacyErr := config.DetectLegacyYAMLConfig(config.GetExplicitLegacyConfigPaths(configPath), []string{configPath})
-				if legacyErr == nil {
-					err = fmt.Errorf("explicit config file does not exist: %s", configPath)
-					return []configIssue{{Level: "error", Message: err.Error()}}, config.Config{}, err
-				}
-			}
-		}
-	}
-
 	cfg, err := config.Load(configPath, false, nil)
 	if err != nil {
-		if errors.Is(err, config.ErrNoJSONConfig) {
-			return []configIssue{{Level: "info", Message: "No config found; system-only mode is valid."}}, config.Config{}, nil
-		}
 		return []configIssue{{Level: "error", Message: err.Error()}}, config.Config{}, err
 	}
 

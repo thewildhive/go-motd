@@ -40,7 +40,6 @@ Options:
   -v              Show version information
   -d              Enable debug mode
   -config PATH    Load config from a specific JSON file
-  -migrate        Migrate legacy config.yml/config.yaml to JSON and exit
   -no-config      Skip config loading and show system information only
   -json           Output machine-readable JSON
   -no-color       Disable ANSI colors (also honors NO_COLOR)
@@ -61,13 +60,11 @@ Supported config paths (priority order):
 - `~/.config/motd/config.json`
 - `/opt/motd/config.json`
 
-Use `-config /path/to/config.json` to load a specific file, or `-no-config` to force system-only output.
+Use `-config /path/to/config.json` to load a specific file, or `-no-config` to force system-only output. When `-config` is set, that exact JSON file must exist and parse successfully.
 
 Create a config file only when you want media integrations or custom system paths such as `compose_dir`, `tank_mount`, or a fixed network interface. When `compose_dir` points at directories containing Compose files, `motd` shows a best-effort Docker Compose summary such as `All containers online` or `X of Y online`; missing or unavailable Compose data is skipped silently.
 
-If a legacy YAML config is detected (`config.yml`/`config.yaml`), `motd` exits with a migration message. Run `motd -migrate` to write the matching `config.json` next to the legacy file. With `-config /path/to/config.json`, migration looks for `/path/to/config.yml` or `/path/to/config.yaml` and writes the specified JSON path.
-
-Legacy Organizr entries are not migrated because Organizr support was removed. The migrator skips them and reports the skipped service.
+If a legacy YAML config is detected (`config.yml`/`config.yaml`), `motd` exits with an unsupported-config message. Automatic YAML migration was removed in MOTD 2.0; see `MIGRATE_v2.md` for manual guidance.
 
 ### Example Config
 
@@ -77,7 +74,7 @@ Legacy Organizr entries are not migrated because Organizr support was removed. T
     "plex": [
       {
         "name": "Main",
-        "url": "http://plex:32400",
+        "url": "https://plex.example.com:32400",
         "token": "your-plex-token",
         "enabled": true
       }
@@ -85,7 +82,7 @@ Legacy Organizr entries are not migrated because Organizr support was removed. T
     "jellyfin": [
       {
         "name": "Main",
-        "url": "http://jellyfin:8096",
+        "url": "https://jellyfin.example.com:8096",
         "token": "your-jellyfin-token",
         "enabled": true
       }
@@ -93,7 +90,7 @@ Legacy Organizr entries are not migrated because Organizr support was removed. T
     "sonarr": [
       {
         "name": "Main",
-        "url": "http://sonarr:8989",
+        "url": "https://sonarr.example.com:8989",
         "api_key": "your-sonarr-api-key",
         "enabled": true
       }
@@ -101,7 +98,7 @@ Legacy Organizr entries are not migrated because Organizr support was removed. T
     "radarr": [
       {
         "name": "Main",
-        "url": "http://radarr:7878",
+        "url": "https://radarr.example.com:7878",
         "api_key": "your-radarr-api-key",
         "enabled": true
       }
@@ -109,7 +106,7 @@ Legacy Organizr entries are not migrated because Organizr support was removed. T
     "seerr": [
       {
         "name": "Main",
-        "url": "http://seerr:5055",
+        "url": "https://seerr.example.com:5055",
         "api_key": "your-seerr-api-key",
         "enabled": true
       }
@@ -125,7 +122,7 @@ Legacy Organizr entries are not migrated because Organizr support was removed. T
 }
 ```
 
-Use `config.json.sample` as the complete reference template. Media services are opt-in; each configured instance must be enabled and include both a URL and token/API key. Run `motd check-config` to validate configuration without treating a missing config as an error.
+Use `config.json.sample` as the complete reference template. Media services are opt-in; each configured instance must be enabled and include both a URL and token/API key. HTTPS is required for remote service URLs; plaintext HTTP is accepted only for loopback hosts such as `localhost`, `127.0.0.1`, and `::1`. Run `motd check-config` to validate configuration without treating a missing config as an error.
 
 ## System Information
 
@@ -149,7 +146,7 @@ If you install optional tools in non-standard paths (e.g., `/snap/bin/docker`, `
 sudo ln -s /snap/bin/docker /usr/bin/docker
 ```
 
-Run with `-d` (debug) to see which tools are not found.
+Run with `-d` (debug) to see which tools are not found and why configured media services are skipped.
 
 ## Seerr Integration
 
@@ -199,7 +196,7 @@ Releases are generated from conventional commits on `main` using Go-native tooli
 - `docs`, `style`, `test`, `ci`, and `chore` do not trigger releases (they don't affect the compiled binary)
 - `BREAKING CHANGE:` in commit footer triggers a major release
 
-When a release is created, CI builds cross-platform archives and uploads them with `checksums.txt` to the GitHub release for the new `vX.Y.Z` tag.
+When a release is created, CI builds cross-platform archives and uploads them with `checksums.txt` to the GitHub release for the new `vX.Y.Z` tag. The release workflow may commit the generated `CHANGELOG.md` update directly to `main`; that automation commit is the explicit exception to the pull-request-only workflow.
 
 ## Development Checks
 
@@ -207,6 +204,7 @@ When a release is created, CI builds cross-platform archives and uploads them wi
 go test ./...
 go vet ./...
 gofmt -l .
+make check-all
 make cross-compile
 ```
 

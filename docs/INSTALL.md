@@ -79,16 +79,9 @@ Config lookup order:
 1. `~/.config/motd/config.json`
 2. `/opt/motd/config.json`
 
-Use `motd -config /path/to/config.json` to load a specific file, or `motd -no-config` to force system-only output. Use `motd check-config` to validate configuration; no config is valid and reports system-only mode.
+Use `motd -config /path/to/config.json` to load a specific file, or `motd -no-config` to force system-only output. When `-config` is set, that exact JSON file must exist and parse successfully. Use `motd check-config` to validate configuration; no config is valid and reports system-only mode.
 
-Legacy YAML files (`config.yml` / `config.yaml`) are not loaded at runtime. To migrate one to JSON, run:
-
-```bash
-motd -migrate
-motd -config /path/to/config.json -migrate
-```
-
-The migrator writes the matching JSON path and refuses to overwrite an existing JSON config. Legacy Organizr entries are skipped because Organizr support was removed.
+Legacy YAML files (`config.yml` / `config.yaml`) are not loaded at runtime, and automatic YAML migration was removed in MOTD 2.0. See `MIGRATE_v2.md` for manual migration guidance. Legacy Organizr entries are unsupported because Organizr support was removed.
 
 Create a config only when you want media integrations or custom system paths:
 
@@ -97,7 +90,7 @@ mkdir -p ~/.config/motd
 cp config.json.sample ~/.config/motd/config.json
 ```
 
-Then edit values for your environment. Media services are opt-in and each enabled instance must include a URL and token/API key. If `compose_dir` points at directories with Compose files, `motd` shows a best-effort Docker Compose summary and skips it silently when unavailable.
+Then edit values for your environment. Media services are opt-in and each enabled instance must include a URL and token/API key. HTTPS is required for remote service URLs; plaintext HTTP is accepted only for loopback hosts such as `localhost`, `127.0.0.1`, and `::1`. If `compose_dir` points at directories with Compose files, `motd` shows a best-effort Docker Compose summary and skips it silently when unavailable.
 
 ### Optional Media Services
 
@@ -177,7 +170,7 @@ motd -d
 1. Verify service URL is reachable
 2. Verify API keys/tokens
 3. Verify firewall/network access
-4. Run with `-d` for debug logs
+4. Run with `-d` for debug logs, including media services skipped because they are disabled, missing credentials, invalid URLs, or blocked remote HTTP
 
 ## Uninstall
 

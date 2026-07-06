@@ -7,6 +7,7 @@
 - `make test` - Run `go test ./...`
 - `make smoke` - Build optimized binary and show help
 - `make check` - Run formatting check, vet, and tests
+- `make check-all` - Run formatting, vet, tests, race tests, native build, and required cross-platform builds
 - `make clean` - Remove `bin/` directory
 - `make cross-compile` - Build for all platforms
 - `make svu-version` - Show current and next semantic versions via `svu`
@@ -65,7 +66,6 @@ the less rework is needed.
 motd/
 ├── main.go              # CLI entry, flag parsing, subcommand routing
 ├── configure.go         # Interactive setup wizard (motd configure)
-├── migration.go         # Legacy YAML → JSON config migration
 ├── config/              # Config struct, loading, saving, paths
 ├── display/             # ANSI colors, DotLabel, PrintSection, PrintHeader, DebugLog
 ├── media/               # Plex, Jellyfin, Sonarr, Radarr, Seerr clients
