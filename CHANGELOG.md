@@ -1,3 +1,6 @@
+## [v2.0.0] - 2026-07-06
+
+
 ## [v1.7.4] - 2026-07-06
 
 - fix: recompare cached update version (f8ac20c)
