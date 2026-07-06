@@ -256,13 +256,13 @@ func TestDefaultCachePath_CreatesDirectory(t *testing.T) {
 func TestWriteAndReadCachedVersion(t *testing.T) {
 	ch := testChecker(t, func(*http.Client) (string, error) { return "", nil })
 
-	// Write a message
-	ch.writeCachedVersion("update available")
+	// Write a latest version
+	ch.writeCachedVersion("2.0.0")
 
 	// Read it back (within cache interval)
-	msg := ch.readCachedVersion()
-	if msg != "update available" {
-		t.Fatalf("expected cached message, got %q", msg)
+	latest := ch.readCachedVersion()
+	if latest != "2.0.0" {
+		t.Fatalf("expected cached latest version, got %q", latest)
 	}
 }
 
@@ -271,14 +271,18 @@ func TestCachedVersionExpires(t *testing.T) {
 
 	// Manually write an expired cache entry (25 min old)
 	expired := time.Now().Add(-25 * time.Minute).Unix()
-	data := fmt.Sprintf("%d\n%s\n", expired, "old msg")
+	entry := cacheEntry{CheckedAt: expired, Latest: "2.0.0"}
+	data, err := json.Marshal(entry)
+	if err != nil {
+		t.Fatalf("failed to marshal cache entry: %v", err)
+	}
 	if err := os.WriteFile(ch.cachePath(), []byte(data), 0644); err != nil {
 		t.Fatalf("failed to write expired cache: %v", err)
 	}
 
-	msg := ch.readCachedVersion()
-	if msg != "" {
-		t.Fatalf("expected expired cache to return empty, got %q", msg)
+	latest := ch.readCachedVersion()
+	if latest != "" {
+		t.Fatalf("expected expired cache to return empty, got %q", latest)
 	}
 }
 
@@ -383,6 +387,33 @@ func TestCheckUpdate_CachesUptodateResult(t *testing.T) {
 	}
 	if callCount != 1 {
 		t.Fatalf("expected fetch to not be called again, got %d calls", callCount)
+	}
+}
+
+func TestCheckUpdate_CachedLatestRecomparesCurrentVersion(t *testing.T) {
+	callCount := 0
+	ch := testChecker(t, func(*http.Client) (string, error) {
+		callCount++
+		return "1.7.3", nil
+	})
+
+	msg := ch.CheckUpdate("1.7.1", nil)
+	if msg == "" {
+		t.Fatal("expected update message")
+	}
+	if !strings.Contains(msg, "1.7.1") || !strings.Contains(msg, "1.7.3") {
+		t.Fatalf("expected current and latest versions in message, got %q", msg)
+	}
+	if callCount != 1 {
+		t.Fatalf("expected 1 fetch call, got %d", callCount)
+	}
+
+	msg = ch.CheckUpdate("1.7.3", nil)
+	if msg != "" {
+		t.Fatalf("expected no update after current version catches up to cached latest, got %q", msg)
+	}
+	if callCount != 1 {
+		t.Fatalf("expected cached latest to avoid another fetch, got %d calls", callCount)
 	}
 }
 

@@ -712,7 +712,6 @@ func checkWriteAccess(execPath string) error {
 type cacheEntry struct {
 	CheckedAt int64  `json:"checked_at"`
 	Latest    string `json:"latest"`
-	Message   string `json:"message"`
 }
 
 const cacheFile = "motd-version-check"
@@ -753,27 +752,28 @@ func CheckUpdate(currentVersion string, client *http.Client) string {
 }
 
 func (ch *Checker) CheckUpdate(currentVersion string, client *http.Client) string {
-	msg := ch.readCachedVersion()
-	switch {
-	case msg == "uptodate":
-		return ""
-	case msg != "":
-		return msg
+	if latest := ch.readCachedVersion(); latest != "" {
+		if CompareVersions(currentVersion, latest) >= 0 {
+			return ""
+		}
+		return updateMessage(currentVersion, latest)
 	}
 
 	latest, err := ch.fetchLatestVersion(client)
-	if err != nil {
+	if err != nil || latest == "" {
 		return ""
 	}
+	ch.writeCachedVersion(latest)
 
 	if CompareVersions(currentVersion, latest) >= 0 {
-		ch.writeCachedVersion("uptodate")
 		return ""
 	}
 
-	msg = fmt.Sprintf("An update is available for motd (%s → %s). Run 'motd self-update' to upgrade.", currentVersion, latest)
-	ch.writeCachedVersion(msg)
-	return msg
+	return updateMessage(currentVersion, latest)
+}
+
+func updateMessage(currentVersion, latest string) string {
+	return fmt.Sprintf("An update is available for motd (%s → %s). Run 'motd self-update' to upgrade.", currentVersion, latest)
 }
 
 func defaultCachePath() string {
@@ -808,7 +808,7 @@ func (ch *Checker) readCachedVersion() string {
 		return ""
 	}
 
-	return entry.Message
+	return entry.Latest
 }
 
 func (ch *Checker) writeCachedVersion(msg string) {
@@ -819,7 +819,7 @@ func (ch *Checker) writeCachedVersion(msg string) {
 
 	entry := cacheEntry{
 		CheckedAt: time.Now().Unix(),
-		Message:   msg,
+		Latest:    msg,
 	}
 	data, _ := json.Marshal(entry)
 	_ = os.WriteFile(path, data, 0644)
