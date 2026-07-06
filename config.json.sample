@@ -3,13 +3,13 @@
     "plex": [
       {
         "name": "Main",
-        "url": "http://plex:32400",
+        "url": "https://plex.example.com:32400",
         "token": "your-plex-token-here",
         "enabled": true
       },
       {
         "name": "Backup",
-        "url": "http://plex-backup:32400",
+        "url": "https://plex-backup.example.com:32400",
         "token": "your-backup-token-here",
         "enabled": false
       }
@@ -17,7 +17,7 @@
     "jellyfin": [
       {
         "name": "Main",
-        "url": "http://jellyfin:8096",
+        "url": "https://jellyfin.example.com:8096",
         "token": "your-jellyfin-token-here",
         "enabled": true
       }
@@ -25,7 +25,7 @@
     "sonarr": [
       {
         "name": "HD",
-        "url": "http://sonarr:8989",
+        "url": "https://sonarr.example.com:8989",
         "api_key": "your-sonarr-api-key-here",
         "enabled": true
       }
@@ -33,7 +33,7 @@
     "radarr": [
       {
         "name": "HD",
-        "url": "http://radarr:7878",
+        "url": "https://radarr.example.com:7878",
         "api_key": "your-radarr-api-key-here",
         "enabled": true
       }
@@ -41,7 +41,7 @@
     "seerr": [
       {
         "name": "Main",
-        "url": "http://seerr:5055",
+        "url": "https://seerr.example.com:5055",
         "api_key": "your-seerr-api-key-here",
         "enabled": true
       }

@@ -101,6 +101,10 @@ type MediaStatus struct {
 }
 
 func AllServices(cfg config.Config, selected map[string]bool) []Service {
+	return allServices(cfg, selected, false)
+}
+
+func allServices(cfg config.Config, selected map[string]bool, debug bool) []Service {
 	out := make([]Service, 0,
 		cappedServiceCount(len(cfg.Services.Plex))+cappedServiceCount(len(cfg.Services.Jellyfin))+
 			cappedServiceCount(len(cfg.Services.Sonarr))+cappedServiceCount(len(cfg.Services.Radarr))+
@@ -110,41 +114,56 @@ func AllServices(cfg config.Config, selected map[string]bool) []Service {
 		if !serviceSelected(selected, "plex") || i >= MaxMediaServicesPerType() {
 			break
 		}
-		if isPlexReady(cfg.Services.Plex[i]) {
-			out = append(out, plexService{cfg: cfg.Services.Plex[i]})
+		svc := cfg.Services.Plex[i]
+		if reason := serviceSkipReason(svc, true); reason != "" {
+			logSkippedService(debug, "Plex", svc, reason)
+			continue
 		}
+		out = append(out, plexService{cfg: svc})
 	}
 	for i := range cfg.Services.Jellyfin {
 		if !serviceSelected(selected, "jellyfin") || i >= MaxMediaServicesPerType() {
 			break
 		}
-		if isJellyfinReady(cfg.Services.Jellyfin[i]) {
-			out = append(out, jellyfinService{cfg: cfg.Services.Jellyfin[i]})
+		svc := cfg.Services.Jellyfin[i]
+		if reason := serviceSkipReason(svc, true); reason != "" {
+			logSkippedService(debug, "Jellyfin", svc, reason)
+			continue
 		}
+		out = append(out, jellyfinService{cfg: svc})
 	}
 	for i := range cfg.Services.Sonarr {
 		if !serviceSelected(selected, "sonarr") || i >= MaxMediaServicesPerType() {
 			break
 		}
-		if isAPIServiceReady(cfg.Services.Sonarr[i]) {
-			out = append(out, sonarrService{cfg: cfg.Services.Sonarr[i]})
+		svc := cfg.Services.Sonarr[i]
+		if reason := serviceSkipReason(svc, false); reason != "" {
+			logSkippedService(debug, "Sonarr", svc, reason)
+			continue
 		}
+		out = append(out, sonarrService{cfg: svc})
 	}
 	for i := range cfg.Services.Radarr {
 		if !serviceSelected(selected, "radarr") || i >= MaxMediaServicesPerType() {
 			break
 		}
-		if isAPIServiceReady(cfg.Services.Radarr[i]) {
-			out = append(out, radarrService{cfg: cfg.Services.Radarr[i]})
+		svc := cfg.Services.Radarr[i]
+		if reason := serviceSkipReason(svc, false); reason != "" {
+			logSkippedService(debug, "Radarr", svc, reason)
+			continue
 		}
+		out = append(out, radarrService{cfg: svc})
 	}
 	for i := range cfg.Services.Seerr {
 		if !serviceSelected(selected, "seerr") || i >= MaxMediaServicesPerType() {
 			break
 		}
-		if isAPIServiceReady(cfg.Services.Seerr[i]) {
-			out = append(out, seerrService{cfg: cfg.Services.Seerr[i]})
+		svc := cfg.Services.Seerr[i]
+		if reason := serviceSkipReason(svc, false); reason != "" {
+			logSkippedService(debug, "Seerr", svc, reason)
+			continue
 		}
+		out = append(out, seerrService{cfg: svc})
 	}
 	return out
 }
@@ -173,7 +192,7 @@ func HasMediaServices(cfg config.Config, selected map[string]bool) bool {
 }
 
 func ShowMediaServices(cfg config.Config, selected map[string]bool, client *http.Client, debug bool) {
-	services := AllServices(cfg, selected)
+	services := allServices(cfg, selected, debug)
 	if len(services) == 0 {
 		return
 	}
@@ -185,7 +204,7 @@ func ShowMediaServices(cfg config.Config, selected map[string]bool, client *http
 }
 
 func CollectMediaStatuses(cfg config.Config, selected map[string]bool, client *http.Client, debug bool) []MediaStatus {
-	return collectMediaStatuses(AllServices(cfg, selected), client, debug)
+	return collectMediaStatuses(allServices(cfg, selected, debug), client, debug)
 }
 
 func collectMediaStatuses(services []Service, client *http.Client, debug bool) []MediaStatus {
@@ -278,15 +297,38 @@ func IsAllowedServiceURL(rawURL string) bool {
 }
 
 func isPlexReady(plex config.ServiceConfig) bool {
-	return plex.Enabled && IsAllowedServiceURL(plex.URL) && plex.Token != ""
+	return serviceSkipReason(plex, true) == ""
 }
 
 func isJellyfinReady(jellyfin config.ServiceConfig) bool {
-	return jellyfin.Enabled && IsAllowedServiceURL(jellyfin.URL) && jellyfin.Token != ""
+	return serviceSkipReason(jellyfin, true) == ""
 }
 
 func isAPIServiceReady(service config.ServiceConfig) bool {
-	return service.Enabled && IsAllowedServiceURL(service.URL) && service.APIKey != ""
+	return serviceSkipReason(service, false) == ""
+}
+
+func serviceSkipReason(service config.ServiceConfig, wantsToken bool) string {
+	if !service.Enabled {
+		return "disabled"
+	}
+	if wantsToken && service.Token == "" {
+		return "missing credential: token"
+	}
+	if !wantsToken && service.APIKey == "" {
+		return "missing credential: api_key"
+	}
+	if !IsValidURL(service.URL) {
+		return "invalid URL"
+	}
+	if IsPlaintextToRemote(service.URL) {
+		return "remote HTTP blocked; use HTTPS or loopback HTTP"
+	}
+	return ""
+}
+
+func logSkippedService(debug bool, kind string, service config.ServiceConfig, reason string) {
+	display.DebugLog(debug, "Skipping %s: %s", serviceLabel(kind, service.Name), reason)
 }
 
 func formatMediaLine(label, text, color string) string {

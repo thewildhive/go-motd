@@ -121,12 +121,12 @@ func TestLoadFromPaths_NoConfigReturnsEmpty(t *testing.T) {
 }
 
 func TestLoad_MissingExplicitPath(t *testing.T) {
-	cfg, err := Load("/some/missing/path/config.json", false, noDebug)
-	if err != nil {
-		t.Fatalf("expected missing explicit path to be acceptable with migration hint behavior, got %v", err)
+	_, err := Load("/some/missing/path/config.json", false, noDebug)
+	if err == nil {
+		t.Fatal("expected missing explicit path to fail")
 	}
-	if cfg.Services.Plex != nil {
-		t.Fatalf("expected empty config")
+	if !strings.Contains(err.Error(), "explicit config file does not exist") {
+		t.Fatalf("unexpected missing explicit config error: %v", err)
 	}
 }
 
@@ -137,6 +137,19 @@ func TestLoad_NoConfigSkips(t *testing.T) {
 	}
 	if cfg.Services.Plex != nil {
 		t.Fatalf("expected no services")
+	}
+}
+
+func TestLoad_NoConfigSkipsLegacyYAML(t *testing.T) {
+	tempDir := t.TempDir()
+	jsonPath := filepath.Join(tempDir, "config.json")
+	legacyPath := filepath.Join(tempDir, "config.yml")
+	if err := os.WriteFile(legacyPath, []byte("services: {}"), 0644); err != nil {
+		t.Fatalf("failed to write legacy config: %v", err)
+	}
+
+	if _, err := Load(jsonPath, true, noDebug); err != nil {
+		t.Fatalf("expected no-config to skip legacy checks, got %v", err)
 	}
 }
 
@@ -225,20 +238,6 @@ func TestGetConfigPaths_ReturnsExpectedOrder(t *testing.T) {
 	}
 	if !strings.HasSuffix(paths[0], filepath.Join(".config", "motd", "config.json")) {
 		t.Fatalf("expected user config path, got %q", paths[0])
-	}
-}
-
-func TestGetExplicitLegacyConfigPaths_ReturnsSiblingYAML(t *testing.T) {
-	expectedDir := filepath.Join("some", "path")
-	paths := GetExplicitLegacyConfigPaths(filepath.Join(string(filepath.Separator), expectedDir, "config.json"))
-	if len(paths) != 2 {
-		t.Fatalf("expected 2 legacy paths, got %d", len(paths))
-	}
-	if !strings.HasSuffix(paths[0], filepath.Join(string(filepath.Separator), expectedDir, "config.yml")) {
-		t.Fatalf("expected config.yml sibling, got %q", paths[0])
-	}
-	if !strings.HasSuffix(paths[1], filepath.Join(string(filepath.Separator), expectedDir, "config.yaml")) {
-		t.Fatalf("expected config.yaml sibling, got %q", paths[1])
 	}
 }
 

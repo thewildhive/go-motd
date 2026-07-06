@@ -47,8 +47,8 @@ func handleConfigure() {
 	// Load existing config or start fresh
 	cfg, err := config.Load("", false, func(string, ...interface{}) {})
 	if err != nil {
-		if _, ok := err.(*config.LegacyConfigError); ok {
-			fmt.Printf("%sLegacy YAML config detected. Run 'motd -migrate' first.%s\n", display.Red, display.Reset)
+		if legacyErr, ok := err.(*config.LegacyConfigError); ok {
+			config.PrintLegacyConfigError(legacyErr)
 			os.Exit(1)
 		}
 		cfg = config.Config{}

@@ -63,6 +63,8 @@ Releases run entirely with Go-native tooling — no npm or Node.js dependencies 
 3. Push your branch and create a pull request
 4. Once merged to `main`, release automation evaluates commits and publishes a release only when commit types require one
 
+The release workflow may commit the generated `CHANGELOG.md` update directly to `main`; that automation commit is the explicit exception to the pull-request-only workflow.
+
 ## Testing
 
 Before submitting a PR:
@@ -82,4 +84,7 @@ go vet ./...
 
 # Build for multiple platforms
 make cross-compile
+
+# Full local gate including race tests and required cross-platform package builds
+make check-all
 ```

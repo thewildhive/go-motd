@@ -9,7 +9,7 @@ BUILDDATE?=$(shell date -u +%d%m%y)
 LDFLAGS=-ldflags="-s -w -X main.VERSION=$(VERSION) -X main.BUILDDATE=$(BUILDDATE)"
 INSTALL_PATH=/usr/local/bin
 
-.PHONY: all build build-optimized clean test smoke check install uninstall cross-compile checksums package release svu-version help
+.PHONY: all build build-optimized clean test smoke check check-all install uninstall cross-compile checksums package release svu-version help
 
 all: build-optimized
 
@@ -51,6 +51,20 @@ check:
 	@echo "Running tests..."
 	$(GO) test ./...
 	@echo "All checks passed!"
+
+# Run native checks, race tests, and required cross-platform compilation
+check-all: check
+	@echo "Running race tests..."
+	$(GO) test -race ./... -count=1
+	@echo "Building native packages..."
+	$(GO) build ./...
+	@echo "Building Windows amd64 packages..."
+	GOOS=windows GOARCH=amd64 $(GO) build ./...
+	@echo "Building macOS amd64 packages..."
+	GOOS=darwin GOARCH=amd64 $(GO) build ./...
+	@echo "Building macOS arm64 packages..."
+	GOOS=darwin GOARCH=arm64 $(GO) build ./...
+	@echo "All native and cross-platform checks passed!"
 
 # Build and run a help smoke test
 smoke: build-optimized
@@ -130,6 +144,7 @@ help:
 	@echo "  make clean           - Remove build artifacts"
 	@echo "  make test            - Run Go tests"
 	@echo "  make check           - Run all quality checks (gofmt, vet, test)"
+	@echo "  make check-all       - Run full native, race, and cross-platform checks"
 	@echo "  make smoke           - Build and run help smoke test"
 	@echo "  make install         - Install to $(INSTALL_PATH)"
 	@echo "  make uninstall       - Remove from $(INSTALL_PATH)"
