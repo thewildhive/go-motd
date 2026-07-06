@@ -1,3 +1,7 @@
+## [v1.7.4] - 2026-07-06
+
+- fix: recompare cached update version (f8ac20c)
+
 ## [v1.7.3] - 2026-07-04
 
 - fix: extract changelog entries from squash commit bodies (e6ad767)
