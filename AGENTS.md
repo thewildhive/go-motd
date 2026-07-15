@@ -6,11 +6,11 @@
 - `make build-optimized` - Build optimized binary with `-ldflags="-s -w"`
 - `make test` - Run `go test ./...`
 - `make smoke` - Build optimized binary and show help
-- `make check` - Run formatting check, vet, and tests
-- `make check-all` - Run formatting, vet, tests, race tests, native build, and required cross-platform builds
+- `make check` - Run the authoritative local gate: formatting, module consistency, vet, tests, race tests, native/cross-platform builds, vulnerability analysis, and workflow validation
+- `make check-all` - Backward-compatible alias for `make check`
 - `make clean` - Remove `bin/` directory
 - `make cross-compile` - Build for all platforms
-- `make svu-version` - Show current and next semantic versions via `svu`
+- `make package VERSION=X.Y.Z SIGNING_KEY_FILE=/path/to/key` - Build, sign, and verify the complete release asset set
 - `go build -buildvcs=false -o bin/motd .` - Direct build
 - `go vet ./...` - Run static analysis
 - `gofmt -l .` - Check formatting
@@ -47,6 +47,9 @@ the less rework is needed.
 - Use short-lived feature branches, open a PR against `main`, and monitor CI before merge.
 - Wait for CI to pass on the PR before merging. If CI fails on a build-tag issue,
   the Cross-platform compilation check log will show which target and symbol failed.
+- `Required` is the stable aggregate check context for the `main` ruleset
+  (shown as `CI / Required` in the Actions UI).
+- This is a solo-maintained repository; do not add CODEOWNERS or require human approvals.
 
 ## Code Style Guidelines
 
@@ -86,7 +89,7 @@ Only commit types that produce a different compiled binary trigger a release:
 |------|------|-----------|
 | `feat` | minor | New code compiled in |
 | `fix` | patch | Bugfix changes the binary |
-| `perf` | minor | Code path/algorithm changes |
+| `perf` | patch | Code path/algorithm changes |
 | `refactor` | patch | Code restructuring alters the artifact |
 | `build` | patch | Dependency/compiler flag changes |
 | `docs` | — | Only .md files, no Go source changes |
@@ -105,6 +108,5 @@ Only commit types that produce a different compiled binary trigger a release:
    `config`, `httpClient`, or `debugMode`. Pass them explicitly.
 3. **Import sorting**: `gofmt` handles this. Run `gofmt -l .` and fix any
    unformatted files — the CI gate will reject them.
-4. **Concurrent merge races**: The Release workflow uses `cancel-in-progress: true`
-   and pulls latest `main` before pushing. If merging multiple PRs quickly, let
-   each release run complete before merging the next one.
+4. **Release trust boundary**: Release Please uses a short-lived GitHub App token.
+   Publishing checks out the immutable release tag and never writes to `main`.

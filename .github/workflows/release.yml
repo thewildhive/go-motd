@@ -2,230 +2,32 @@ name: Release
 
 on:
   push:
-    branches:
-      - main
-    paths-ignore:
-      - '*.md'
-      - 'docs/**'
-      - 'testdata/**'
-      - 'LICENSE'
-      - 'NOTICE'
+    branches: [main]
+  workflow_dispatch:
+
 permissions:
   contents: read
 
 concurrency:
-  group: release-${{ github.ref }}
-  cancel-in-progress: true
+  group: release-main
+  cancel-in-progress: false
 
 jobs:
-  changes:
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    outputs:
-      releasable: ${{ steps.changed.outputs.releasable }}
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
-        with:
-          fetch-depth: 0
-
-      - name: Detect releasable changes
-        id: changed
-        run: |
-          set -euo pipefail
-          BASE=$(git describe --tags --abbrev=0 --match "v*" 2>/dev/null || git rev-list --max-parents=0 HEAD)
-          CHANGED=$(git diff --name-only "$BASE"..HEAD 2>/dev/null || true)
-          CODE_CHANGED=$(echo "$CHANGED" | grep -vE '(^|/)docs/|(^|/)testdata/|(^|/)LICENSE$|(^|/)NOTICE$|(^|/)\.github/|\.md$' || true)
-          if [ -z "$CODE_CHANGED" ]; then
-            echo "releasable=false" >> "$GITHUB_OUTPUT"
-            echo "No releasable code changes detected"
-          else
-            echo "releasable=true" >> "$GITHUB_OUTPUT"
-            echo "Releasable changes detected"
-          fi
-
   release:
-    name: Release
-    needs: changes
-    if: ${{ needs.changes.outputs.releasable == 'true' && !contains(github.event.head_commit.message || '', 'chore(release)') }}
+    name: Release Please
+    if: github.ref == 'refs/heads/main' && github.repository == 'thewildhive/go-motd'
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    permissions:
-      contents: write
     steps:
-      - name: Checkout code
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
+      - name: Create release GitHub App token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1 # v3.2.0
         with:
-          fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Set up Go
-        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+          app-id: ${{ secrets.RELEASE_APP_ID }}
+          private-key: ${{ secrets.RELEASE_APP_PRIVATE_KEY }}
+      - name: Create or update release pull request
+        uses: googleapis/release-please-action@45996ed1f6d02564a971a2fa1b5860e934307cf7 # v5.0.0
         with:
-          go-version-file: go.mod
-          cache: true
-          cache-dependency-path: |
-            go.sum
-
-      - name: Install svu
-        run: go install github.com/caarlos0/svu/v2@v2.2.0
-
-      - name: Verify formatting
-        run: |
-          set -euo pipefail
-          UNFORMATTED="$(gofmt -l .)"
-          if [ -n "$UNFORMATTED" ]; then
-            echo "The following files are not gofmt-formatted:"
-            echo "$UNFORMATTED"
-            exit 1
-          fi
-
-      - name: Run quality checks
-        env:
-          GOCACHE: /tmp/go-build-cache
-        run: |
-          set -euo pipefail
-          go test -count=1 ./...
-          go vet ./...
-          go build -buildvcs=false -o /tmp/motd-test .
-          /tmp/motd-test -h
-
-      - name: Capture previous tag
-        id: previous_tag
-        run: |
-          tag=$(git describe --tags --abbrev=0 --match "v*" 2>/dev/null || true)
-          printf 'value=%s\n' "$tag" >> "$GITHUB_OUTPUT"
-          echo "Previous tag: $tag"
-
-      - name: Determine next version
-        id: version
-        run: |
-          eval "$(bash .github/scripts/determine-version.sh)"
-          if [ -z "$version" ]; then
-            echo "needed=false" >> "$GITHUB_OUTPUT"
-            echo "No release needed — no version-bumping commits since last tag."
-          else
-            echo "needed=true" >> "$GITHUB_OUTPUT"
-            echo "tag=$version" >> "$GITHUB_OUTPUT"
-            echo "version=${version#v}" >> "$GITHUB_OUTPUT"
-            echo "Next version: $version"
-          fi
-
-      - name: Generate changelog
-        if: ${{ steps.version.outputs.needed == 'true' }}
-        run: |
-          PREV="${{ steps.previous_tag.outputs.value }}"
-          DATE=$(date -u +%Y-%m-%d)
-          bash .github/scripts/generate-changelog-entry.sh "$PREV" HEAD "${{ steps.version.outputs.tag }}" "$DATE" > /tmp/release-notes.md
-
-      - name: Build release binaries
-        if: ${{ steps.version.outputs.needed == 'true' }}
-        env:
-          RELEASE_VERSION: ${{ steps.version.outputs.version }}
-        run: |
-          set -euo pipefail
-          mkdir -p release
-          BUILDDATE=$(date -u +%d%m%y)
-          LDFLAGS="-s -w -X main.VERSION=${RELEASE_VERSION} -X main.BUILDDATE=${BUILDDATE}"
-
-          GOOS=linux GOARCH=amd64 go build -buildvcs=false -ldflags="${LDFLAGS}" -o release/motd-linux-amd64 .
-          GOOS=linux GOARCH=arm64 go build -buildvcs=false -ldflags="${LDFLAGS}" -o release/motd-linux-arm64 .
-          GOOS=darwin GOARCH=amd64 go build -buildvcs=false -ldflags="${LDFLAGS}" -o release/motd-darwin-amd64 .
-          GOOS=darwin GOARCH=arm64 go build -buildvcs=false -ldflags="${LDFLAGS}" -o release/motd-darwin-arm64 .
-          GOOS=windows GOARCH=amd64 go build -buildvcs=false -ldflags="${LDFLAGS}" -o release/motd-windows-amd64.exe .
-
-          cd release
-          sha256sum motd-linux-amd64 motd-linux-arm64 motd-darwin-amd64 motd-darwin-arm64 motd-windows-amd64.exe > checksums.txt
-
-      - name: Sign checksums.txt
-        if: ${{ steps.version.outputs.needed == 'true' }}
-        env:
-          SIGNING_KEY: ${{ secrets.SIGNING_PRIVATE_KEY }}
-        run: |
-          set -euo pipefail
-          if [ -z "$SIGNING_KEY" ]; then
-            echo "SIGNING_PRIVATE_KEY secret is not set — skipping checksums signing"
-            exit 1
-          fi
-          KEY_FILE=$(mktemp)
-          trap 'rm -f "$KEY_FILE"' EXIT
-          chmod 600 "$KEY_FILE"
-          printf '%s' "$SIGNING_KEY" > "$KEY_FILE"
-          openssl pkeyutl -sign -inkey "$KEY_FILE" -rawin -in release/checksums.txt -out release/checksums.txt.sig
-
-      - name: Package release artifacts
-        if: ${{ steps.version.outputs.needed == 'true' }}
-        env:
-          RELEASE_VERSION: ${{ steps.version.outputs.version }}
-        run: |
-          set -euo pipefail
-          cd release
-
-          tar -czf "motd-${RELEASE_VERSION}-linux-amd64.tar.gz" motd-linux-amd64
-          tar -czf "motd-${RELEASE_VERSION}-linux-arm64.tar.gz" motd-linux-arm64
-          tar -czf "motd-${RELEASE_VERSION}-darwin-amd64.tar.gz" motd-darwin-amd64
-          tar -czf "motd-${RELEASE_VERSION}-darwin-arm64.tar.gz" motd-darwin-arm64
-          zip "motd-${RELEASE_VERSION}-windows-amd64.zip" motd-windows-amd64.exe
-          sha256sum *.tar.gz *.zip > archive-checksums.txt
-
-      - name: Sign archive-checksums.txt
-        if: ${{ steps.version.outputs.needed == 'true' }}
-        env:
-          SIGNING_KEY: ${{ secrets.SIGNING_PRIVATE_KEY }}
-        run: |
-          set -euo pipefail
-          if [ -z "$SIGNING_KEY" ]; then
-            echo "SIGNING_PRIVATE_KEY secret is not set — skipping archive checksums signing"
-            exit 1
-          fi
-          KEY_FILE=$(mktemp)
-          trap 'rm -f "$KEY_FILE"' EXIT
-          chmod 600 "$KEY_FILE"
-          printf '%s' "$SIGNING_KEY" > "$KEY_FILE"
-          openssl pkeyutl -sign -inkey "$KEY_FILE" -rawin -in release/archive-checksums.txt -out release/archive-checksums.txt.sig
-
-      - name: Update CHANGELOG.md
-        if: steps.version.outputs.needed == 'true'
-        env:
-          PREV_TAG: ${{ steps.previous_tag.outputs.value }}
-        run: |
-          DATE=$(date -u +%Y-%m-%d)
-          bash .github/scripts/generate-changelog-entry.sh "$PREV_TAG" HEAD "${{ steps.version.outputs.tag }}" "$DATE" > /tmp/changelog-entry.md
-
-          if [ -f CHANGELOG.md ]; then
-            cat /tmp/changelog-entry.md CHANGELOG.md > /tmp/new-changelog.md
-            mv /tmp/new-changelog.md CHANGELOG.md
-          else
-            {
-              printf '# Changelog\n\n'
-              cat /tmp/changelog-entry.md
-            } > CHANGELOG.md
-          fi
-
-      - name: Commit CHANGELOG.md and push tag
-        if: steps.version.outputs.needed == 'true'
-        run: |
-          set -euo pipefail
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-
-          git add CHANGELOG.md
-          if ! git diff --cached --quiet; then
-            git commit -m "chore(release): ${{ steps.version.outputs.version }} [skip ci]"
-          fi
-
-          git push origin HEAD:main
-          git tag -a "${{ steps.version.outputs.tag }}" -m "Release ${{ steps.version.outputs.tag }}"
-          git push origin "refs/tags/${{ steps.version.outputs.tag }}"
-
-      - name: Create GitHub Release
-        if: steps.version.outputs.needed == 'true'
-        uses: softprops/action-gh-release@7c4723f7a335432393329f8f1c564994ce50185d # v3
-        with:
-          tag_name: ${{ steps.version.outputs.tag }}
-          body_path: /tmp/release-notes.md
-          files: |
-            release/*
-          fail_on_unmatched_files: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ steps.app-token.outputs.token }}
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
