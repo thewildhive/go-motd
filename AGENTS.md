@@ -47,7 +47,8 @@ the less rework is needed.
 - Use short-lived feature branches, open a PR against `main`, and monitor CI before merge.
 - Wait for CI to pass on the PR before merging. If CI fails on a build-tag issue,
   the Cross-platform compilation check log will show which target and symbol failed.
-- `CI / Required` is the stable aggregate check for the `main` ruleset.
+- `Required` is the stable aggregate check context for the `main` ruleset
+  (shown as `CI / Required` in the Actions UI).
 - This is a solo-maintained repository; do not add CODEOWNERS or require human approvals.
 
 ## Code Style Guidelines
