@@ -1,6 +1,13 @@
 ## [v2.0.0] - 2026-07-06
 
 
+## [2.0.1](https://github.com/thewildhive/go-motd/compare/v2.0.0...v2.0.1) (2026-07-15)
+
+
+### Bug Fixes
+
+* secure configuration and release automation ([bc4778c](https://github.com/thewildhive/go-motd/commit/bc4778c20041287708ea0a74c39e5b3e930f6e5f))
+
 ## [v1.7.4] - 2026-07-06
 
 - fix: recompare cached update version (f8ac20c)
