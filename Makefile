@@ -1,155 +1,101 @@
-# Makefile for MOTD Go implementation
+# Build and validation entry points for motd.
 
-BINARY_NAME=motd
-BIN_DIR=bin
-GO=go
-VERSION?=dev
-GO_BUILD_FLAGS=-buildvcs=false
-BUILDDATE?=$(shell date -u +%d%m%y)
-LDFLAGS=-ldflags="-s -w -X main.VERSION=$(VERSION) -X main.BUILDDATE=$(BUILDDATE)"
-INSTALL_PATH=/usr/local/bin
+BINARY_NAME := motd
+BIN_DIR := bin
+GO := go
+GOCACHE ?= $(CURDIR)/.cache/go-build
+GOTMPDIR ?= $(CURDIR)/.cache/go-tmp
+export GOCACHE GOTMPDIR
+VERSION ?= dev
+BUILDDATE ?= $(shell date -u +%d%m%y)
+GO_BUILD_FLAGS := -buildvcs=false
+LDFLAGS := -ldflags="-s -w -X main.VERSION=$(VERSION) -X main.BUILDDATE=$(BUILDDATE)"
+INSTALL_PATH := /usr/local/bin
 
-.PHONY: all build build-optimized clean test smoke check check-all install uninstall cross-compile checksums package release svu-version help
+.PHONY: all cache-dirs build build-optimized clean test smoke check check-all check-workflows install uninstall cross-compile package release help
 
 all: build-optimized
 
-# Build regular binary
-build:
-	@echo "Building $(BINARY_NAME)..."
+cache-dirs:
+	@mkdir -p $(GOCACHE) $(GOTMPDIR)
+
+build: cache-dirs
 	@mkdir -p $(BIN_DIR)
 	$(GO) build $(GO_BUILD_FLAGS) -ldflags="-X main.VERSION=$(VERSION) -X main.BUILDDATE=$(BUILDDATE)" -o $(BIN_DIR)/$(BINARY_NAME) .
-	@echo "Build complete: $(BIN_DIR)/$(BINARY_NAME)"
 
-# Build optimized binary (smaller, faster)
-build-optimized:
-	@echo "Building optimized $(BINARY_NAME)..."
+build-optimized: cache-dirs
 	@mkdir -p $(BIN_DIR)
 	$(GO) build $(GO_BUILD_FLAGS) $(LDFLAGS) -o $(BIN_DIR)/$(BINARY_NAME) .
-	@echo "Optimized build complete: $(BIN_DIR)/$(BINARY_NAME)"
 
-# Clean build artifacts
 clean:
-	@echo "Cleaning build artifacts..."
 	rm -rf $(BIN_DIR)
-	@echo "Clean complete"
 
-# Run unit tests
-test:
-	$(GO) test ./...
+test: cache-dirs
+	$(GO) test -count=1 ./...
 
-# Run all quality checks (formatting, vet, tests)
-check:
+# Authoritative local gate. This intentionally includes every published target.
+check: cache-dirs
 	@echo "Checking formatting..."
-	@UNFORMATTED=$$(gofmt -l .); \
-	if [ -n "$$UNFORMATTED" ]; then \
-		echo "The following files are not gofmt-formatted:"; \
-		echo "$$UNFORMATTED"; \
-		exit 1; \
-	fi
-	@echo "Running go vet..."
+	@files="$$(gofmt -l .)"; test -z "$$files" || { echo "$$files"; echo "Run: gofmt -w ."; exit 1; }
+	@echo "Checking module consistency..."
+	@before="$$(sha256sum go.mod go.sum)"; $(GO) mod tidy; after="$$(sha256sum go.mod go.sum)"; \
+		test "$$before" = "$$after" || { echo "go mod tidy changed go.mod or go.sum"; exit 1; }
+	$(GO) mod verify
+	@echo "Running static analysis and tests..."
 	$(GO) vet ./...
-	@echo "Running tests..."
-	$(GO) test ./...
-	@echo "All checks passed!"
+	$(GO) test -count=1 ./...
+	$(GO) test -race -count=1 ./...
+	@echo "Building native and release targets..."
+	$(GO) build $(GO_BUILD_FLAGS) ./...
+	GOOS=linux GOARCH=amd64 $(GO) build $(GO_BUILD_FLAGS) ./...
+	GOOS=linux GOARCH=arm64 $(GO) build $(GO_BUILD_FLAGS) ./...
+	GOOS=darwin GOARCH=amd64 $(GO) build $(GO_BUILD_FLAGS) ./...
+	GOOS=darwin GOARCH=arm64 $(GO) build $(GO_BUILD_FLAGS) ./...
+	GOOS=windows GOARCH=amd64 $(GO) build $(GO_BUILD_FLAGS) ./...
+	@echo "Running native vulnerability analysis..."
+	$(GO) build $(GO_BUILD_FLAGS) -o /tmp/motd-vulncheck .
+	$(GO) run golang.org/x/vuln/cmd/govulncheck@v1.6.0 -mode=binary /tmp/motd-vulncheck
+	@$(MAKE) check-workflows
+	@echo "All checks passed."
 
-# Run native checks, race tests, and required cross-platform compilation
+# Backward-compatible alias retained for existing contributor habits.
 check-all: check
-	@echo "Running race tests..."
-	$(GO) test -race ./... -count=1
-	@echo "Building native packages..."
-	$(GO) build ./...
-	@echo "Building Windows amd64 packages..."
-	GOOS=windows GOARCH=amd64 $(GO) build ./...
-	@echo "Building macOS amd64 packages..."
-	GOOS=darwin GOARCH=amd64 $(GO) build ./...
-	@echo "Building macOS arm64 packages..."
-	GOOS=darwin GOARCH=arm64 $(GO) build ./...
-	@echo "All native and cross-platform checks passed!"
 
-# Build and run a help smoke test
+check-workflows: cache-dirs
+	$(GO) run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+	bash -n .github/scripts/*.sh install.sh
+
 smoke: build-optimized
-	@echo "Running $(BINARY_NAME)..."
 	./$(BIN_DIR)/$(BINARY_NAME) -h
+	./$(BIN_DIR)/$(BINARY_NAME) -v
 
-# Install to system
 install: build-optimized
-	@echo "Installing $(BINARY_NAME) to $(INSTALL_PATH)..."
 	sudo cp $(BIN_DIR)/$(BINARY_NAME) $(INSTALL_PATH)/
 	sudo chmod +x $(INSTALL_PATH)/$(BINARY_NAME)
-	@echo "Installation complete. Run 'motd' from anywhere."
 
-# Uninstall from system
 uninstall:
-	@echo "Uninstalling $(BINARY_NAME) from $(INSTALL_PATH)..."
 	sudo rm -f $(INSTALL_PATH)/$(BINARY_NAME)
-	@echo "Uninstall complete"
 
-# Cross-compile for different platforms
-cross-compile:
-	@echo "Cross-compiling for multiple platforms..."
+cross-compile: cache-dirs
 	@mkdir -p $(BIN_DIR)
 	GOOS=linux GOARCH=amd64 $(GO) build $(GO_BUILD_FLAGS) $(LDFLAGS) -o $(BIN_DIR)/$(BINARY_NAME)-linux-amd64 .
 	GOOS=linux GOARCH=arm64 $(GO) build $(GO_BUILD_FLAGS) $(LDFLAGS) -o $(BIN_DIR)/$(BINARY_NAME)-linux-arm64 .
 	GOOS=darwin GOARCH=amd64 $(GO) build $(GO_BUILD_FLAGS) $(LDFLAGS) -o $(BIN_DIR)/$(BINARY_NAME)-darwin-amd64 .
 	GOOS=darwin GOARCH=arm64 $(GO) build $(GO_BUILD_FLAGS) $(LDFLAGS) -o $(BIN_DIR)/$(BINARY_NAME)-darwin-arm64 .
 	GOOS=windows GOARCH=amd64 $(GO) build $(GO_BUILD_FLAGS) $(LDFLAGS) -o $(BIN_DIR)/$(BINARY_NAME)-windows-amd64.exe .
-	@echo "Cross-compilation complete"
-	@ls -lh $(BIN_DIR)/$(BINARY_NAME)-*
 
-# Generate checksums for release assets
-checksums:
-	@echo "Generating checksums..."
-	@cd $(BIN_DIR) && sha256sum motd-linux-amd64 motd-linux-arm64 motd-darwin-amd64 motd-darwin-arm64 motd-windows-amd64.exe > checksums.txt
-	@echo "Checksums generated: $(BIN_DIR)/checksums.txt"
+# SIGNING_KEY_FILE must point to the Ed25519 private key used for this build.
+package: clean cache-dirs
+	SIGNING_KEY_FILE="$(SIGNING_KEY_FILE)" .github/scripts/package-release.sh "$(VERSION)" $(BIN_DIR)/release
 
-# Package release assets
-package: clean
-	@echo "Creating release packages..."
-	@mkdir -p $(BIN_DIR)/release
-	@VERSION="$(VERSION)"; \
-	echo "Building version $$VERSION"; \
-	for os in linux-amd64 linux-arm64 darwin-amd64 darwin-arm64 windows-amd64; do \
-		os_name=$$(echo $$os | cut -d- -f1); \
-		arch=$$(echo $$os | cut -d- -f2); \
-		if [ "$$os_name" = "windows" ]; then \
-			GOOS=$$os_name GOARCH=$$arch $(GO) build $(GO_BUILD_FLAGS) -ldflags="-s -w -X main.VERSION=$$VERSION -X main.BUILDDATE=$$(date -u +%d%m%y)" -o $(BIN_DIR)/release/motd-$$os.exe .; \
-			cd $(BIN_DIR)/release && zip motd-$$VERSION-$$os.zip motd-$$os.exe; \
-		else \
-			GOOS=$$os_name GOARCH=$$arch $(GO) build $(GO_BUILD_FLAGS) -ldflags="-s -w -X main.VERSION=$$VERSION -X main.BUILDDATE=$$(date -u +%d%m%y)" -o $(BIN_DIR)/release/motd-$$os .; \
-			cd $(BIN_DIR)/release && tar -czf motd-$$VERSION-$$os.tar.gz motd-$$os; \
-		fi; \
-		cd -; \
-	done
-	@$(MAKE) checksums BIN_DIR=$(BIN_DIR)/release
-	@cd $(BIN_DIR)/release && sha256sum *.tar.gz *.zip > archive-checksums.txt
-	@echo "Release packages created in $(BIN_DIR)/release/"
-	@ls -la $(BIN_DIR)/release/
+release: package
 
-# Show next version using svu (requires svu: go install github.com/caarlos0/svu/v2@latest)
-svu-version:
-	@echo "Current version:  $$(svu current 2>/dev/null || echo no-tags)"
-	@echo "Next version:     $$(svu next --force-patch-increment 2>/dev/null || echo unknown)"
-
-# Full release process (build, package, checksums)
-release: clean package
-	@echo "Release complete!"
-
-# Show help
 help:
-	@echo "MOTD Go Implementation - Makefile commands:"
-	@echo ""
-	@echo "  make                 - Build optimized binary (default)"
-	@echo "  make build           - Build regular binary"
-	@echo "  make build-optimized - Build optimized binary"
-	@echo "  make clean           - Remove build artifacts"
-	@echo "  make test            - Run Go tests"
-	@echo "  make check           - Run all quality checks (gofmt, vet, test)"
-	@echo "  make check-all       - Run full native, race, and cross-platform checks"
-	@echo "  make smoke           - Build and run help smoke test"
-	@echo "  make install         - Install to $(INSTALL_PATH)"
-	@echo "  make uninstall       - Remove from $(INSTALL_PATH)"
-	@echo "  make cross-compile   - Build for multiple platforms"
-	@echo "  make checksums       - Generate SHA256 checksums"
-	@echo "  make package         - Create release packages"
-	@echo "  make svu-version     - Show current and next versions using svu"
-	@echo "  make help            - Show this help message"
+	@echo "MOTD build commands:"
+	@echo "  make build             Build bin/motd"
+	@echo "  make build-optimized   Build an optimized bin/motd"
+	@echo "  make check             Run the authoritative local CI gate"
+	@echo "  make check-all         Alias for make check"
+	@echo "  make smoke             Build and run help/version smoke tests"
+	@echo "  make cross-compile     Build all five supported raw binaries"
+	@echo "  make package VERSION=X.Y.Z SIGNING_KEY_FILE=/path/to/key"

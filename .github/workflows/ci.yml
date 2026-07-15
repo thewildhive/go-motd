@@ -1,142 +1,162 @@
 name: CI
 
 on:
+  push:
+    branches: [main]
   pull_request:
     branches: [main]
-    paths-ignore:
-      - '*.md'
-      - 'docs/**'
-      - 'testdata/**'
-      - 'LICENSE'
-      - 'NOTICE'
+  merge_group:
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.ref }}
+  group: ci-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
-  changes:
+  quality:
+    name: Quality
     runs-on: ubuntu-latest
-    timeout-minutes: 5
-    outputs:
-      go: ${{ steps.changed.outputs.go }}
+    timeout-minutes: 15
     steps:
-      - name: Checkout code
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
-
-      - name: Detect changed paths
-        id: changed
-        uses: dorny/paths-filter@fbd0ab8f3e69293af611ebaee6363fc25e6d187d # v4
-        with:
-          filters: |
-            go:
-              - '**/*.go'
-              - 'go.mod'
-              - 'go.sum'
-              - '.github/scripts/**'
-              - '.github/workflows/ci.yml'
-              - '.github/workflows/release.yml'
-
-  go:
-    name: Go checks
-    needs: changes
-    if: needs.changes.outputs.go == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
-
+      - name: Check out repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - name: Set up Go
-        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
           go-version-file: go.mod
           cache: true
-
-      - name: Run go checks
-        env:
-          GOCACHE: /tmp/go-build-cache
+      - name: Check formatting
+        shell: bash
         run: |
-          set -euo pipefail
-          UNFORMATTED="$(gofmt -l .)"
-          if [ -n "$UNFORMATTED" ]; then
-            echo "The following files are not gofmt-formatted:"
-            echo "$UNFORMATTED"
+          files="$(gofmt -l .)"
+          if [[ -n "$files" ]]; then
+            echo "::error::Run 'gofmt -w .' on these files:"
+            echo "$files"
             exit 1
           fi
-          go vet ./...
-          go test -race -count=1 ./...
-          go build -buildvcs=false -o /tmp/motd-test .
-          /tmp/motd-test -h
+      - name: Check module consistency
+        run: |
+          go mod tidy
+          git diff --exit-code -- go.mod go.sum
+          go mod verify
+      - name: Run go vet
+        run: go vet ./...
+      - name: Validate workflow syntax
+        run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+      - name: Check release scripts
+        run: bash -n .github/scripts/*.sh
+      - name: Validate conventional PR title
+        if: github.event_name == 'pull_request'
+        env:
+          PR_TITLE: ${{ github.event.pull_request.title }}
+        shell: bash
+        run: |
+          pattern='^(feat|fix|perf|refactor|docs|style|test|build|ci|chore|revert)(\([a-z0-9._/-]+\))?!?: .+'
+          if [[ ! "$PR_TITLE" =~ $pattern ]]; then
+            echo "::error::PR title must use Conventional Commits, for example 'fix(update): verify checksums'."
+            exit 1
+          fi
+      - name: Validate internal documentation links
+        uses: lycheeverse/lychee-action@e7477775783ea5526144ba13e8db5eec57747ce8 # v2.9.0
+        with:
+          args: --offline --no-progress './**/*.md'
+          fail: true
 
-  cross-platform:
-    name: Cross-platform build
-    needs: changes
-    if: needs.changes.outputs.go == 'true'
+  tests:
+    name: Tests
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Set up Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Run race tests with coverage
+        run: go test -race -count=1 -covermode=atomic -coverprofile=coverage.out ./...
+      - name: Write coverage summary
+        shell: bash
+        run: |
+          {
+            echo '## Go coverage'
+            echo '```text'
+            go tool cover -func=coverage.out
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  builds:
+    name: Build (${{ matrix.os }}/${{ matrix.arch }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
         include:
-          - { os: windows, arch: amd64 }
-          - { os: darwin, arch: amd64 }
-          - { os: darwin, arch: arm64 }
           - { os: linux, arch: amd64 }
           - { os: linux, arch: arm64 }
+          - { os: darwin, arch: amd64 }
+          - { os: darwin, arch: arm64 }
+          - { os: windows, arch: amd64 }
     steps:
-      - name: Checkout code
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
-
+      - name: Check out repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - name: Set up Go
-        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
           go-version-file: go.mod
           cache: true
+      - name: Build target
+        shell: bash
+        run: GOOS=${{ matrix.os }} GOARCH=${{ matrix.arch }} go build -buildvcs=false ./...
 
-      - name: Cross-platform build
-        env:
-          GOCACHE: /tmp/go-build-cache
+  vulnerabilities:
+    name: Vulnerabilities
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Set up Go
+        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Run govulncheck
         run: |
-          set -euo pipefail
-          GOOS=${{ matrix.os }} GOARCH=${{ matrix.arch }} go build ./...
+          go build -buildvcs=false -o /tmp/motd-vulncheck .
+          go run golang.org/x/vuln/cmd/govulncheck@v1.6.0 -mode=binary /tmp/motd-vulncheck
 
-  windows-tests:
-    name: Windows tests
-    needs: changes
-    if: needs.changes.outputs.go == 'true'
-    runs-on: windows-latest
-    timeout-minutes: 20
+  dependency-review:
+    name: Dependency review
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
-      - name: Checkout code
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7
-
-      - name: Set up Go
-        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+      - name: Review dependency changes
+        uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
         with:
-          go-version-file: go.mod
-          cache: true
-
-      - name: Run Windows tests
-        run: go test -count=1 ./...
+          fail-on-severity: moderate
+          license-check: false
+          comment-summary-in-pr: never
 
   required:
-    name: Required checks
+    name: Required
     if: always()
-    needs:
-      - changes
-      - go
-      - cross-platform
-      - windows-tests
+    needs: [quality, tests, builds, vulnerabilities, dependency-review]
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:
-      - name: Ensure required checks passed
+      - name: Require every applicable gate
+        env:
+          RESULTS: ${{ toJSON(needs) }}
+        shell: bash
         run: |
-          if [ "${{ needs.changes.result }}" = "failure" ] || [ "${{ needs.go.result }}" = "failure" ] || [ "${{ needs.cross-platform.result }}" = "failure" ] || [ "${{ needs.windows-tests.result }}" = "failure" ]; then
-            echo "One or more required checks failed"
+          echo "$RESULTS"
+          if jq -e 'to_entries[] | select(.value.result != "success" and .value.result != "skipped")' <<<"$RESULTS" >/dev/null; then
             exit 1
           fi

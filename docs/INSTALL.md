@@ -180,6 +180,24 @@ rm -rf ~/.config/motd
 sudo rm -rf /opt/motd
 ```
 
+## Roll back
+
+Choose the prior known-good tag from the Releases page, replace `TAG` and `ASSET` below, and verify the raw binary against that release's signed `checksums.txt` before installing it. The normal installer and `self-update` command select only the latest release, so rollback is intentionally explicit.
+
+```bash
+TAG=v1.7.4
+ASSET=motd-linux-amd64
+curl -fL "https://github.com/thewildhive/go-motd/releases/download/${TAG}/${ASSET}" -o "${ASSET}"
+curl -fL "https://github.com/thewildhive/go-motd/releases/download/${TAG}/checksums.txt" -o checksums.txt
+curl -fL "https://github.com/thewildhive/go-motd/releases/download/${TAG}/checksums.txt.sig" -o checksums.txt.sig
+# Verify checksums.txt.sig using the trusted Ed25519 public key, then:
+sha256sum -c checksums.txt --ignore-missing
+sudo install -m 0755 "${ASSET}" /usr/local/bin/motd
+motd -v
+```
+
+Do not move an existing tag or replace its assets. Publish a new patch release for a corrected build.
+
 ## Help
 
 - Issues: <https://github.com/thewildhive/go-motd/issues>

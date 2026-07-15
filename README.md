@@ -2,6 +2,8 @@
 
 A Go implementation of MOTD (Message of the Day) that displays system information and media service statistics with fast startup and native HTTP integrations.
 
+Status: maintained. The latest release is the supported version; the CLI, JSON configuration, exit behavior, and published artifact names follow Semantic Versioning.
+
 ## Features
 
 - Fast execution from a single compiled binary
@@ -175,7 +177,8 @@ The self-update mechanism provides defense-in-depth against supply-chain attacks
 Operational assumptions:
 - The signing private key is stored as a GitHub repository secret (`SIGNING_PRIVATE_KEY`)
 - The corresponding public key is compiled into the binary (`checksumsPublicKeyHex`)
-- Releases are created by the CI pipeline; assets are signed during release automation
+- Release Please uses `RELEASE_APP_ID` and `RELEASE_APP_PRIVATE_KEY` to obtain a short-lived GitHub App token
+- Releases are created from reviewed release PRs; assets are built from the immutable tag and signed during publication
 - `motd self-update` requires write access to the binary's directory; use `sudo` or install to `~/.local/bin` if needed
 - Cross-device binary replacement uses a staged copy in the target directory before atomic rename
 
@@ -189,23 +192,21 @@ See `docs/INSTALL.md` for complete installation and system integration guidance.
 
 ## Release Automation
 
-Releases are generated from conventional commits on `main` using Go-native tooling — [`svu`](https://github.com/caarlos0/svu) for version bumping and a shell-based pipeline for build and publish. No npm/Node.js dependencies are involved.
+Releases are generated from conventional commits on `main` by Release Please. It opens a reviewable release PR containing the version and changelog; merging that PR creates the tag and GitHub Release, then a separate workflow builds and signs the assets from that immutable tag.
 
-- `feat` and `perf` trigger minor releases
-- `fix`, `refactor`, and `build` trigger patch releases
+- `feat` triggers minor releases
+- `fix`, `perf`, `refactor`, and `build` trigger patch releases
 - `docs`, `style`, `test`, `ci`, and `chore` do not trigger releases (they don't affect the compiled binary)
 - `BREAKING CHANGE:` in commit footer triggers a major release
 
-When a release is created, CI builds cross-platform archives and uploads them with `checksums.txt` to the GitHub release for the new `vX.Y.Z` tag. The release workflow may commit the generated `CHANGELOG.md` update directly to `main`; that automation commit is the explicit exception to the pull-request-only workflow.
+When a release PR is merged, the publishing workflow builds cross-platform raw binaries and archives and uploads them with signed `checksums.txt` files to the GitHub release for the new `vX.Y.Z` tag. Automation never writes directly to `main`.
+
+Publication is recoverable without moving the tag: manually dispatch `Publish Release` with the existing tag. It uploads missing files, accepts byte-identical existing files, and refuses replacements. Roll back by reinstalling a prior release after verifying its signed checksums; repair a bad release with a new patch rather than changing published assets.
 
 ## Development Checks
 
 ```bash
-go test ./...
-go vet ./...
-gofmt -l .
-make check-all
-make cross-compile
+make check
 ```
 
 ## Cross-Compilation

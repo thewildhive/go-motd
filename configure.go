@@ -133,9 +133,14 @@ func configureServiceSlice(reader *bufio.Reader, cfg *config.Config, ws wizardSe
 }
 
 func promptInstance(reader *bufio.Reader, svc *config.ServiceConfig, ws wizardService) {
-	promptString(reader, svc, "name", ws.DefaultInstance)
-	promptString(reader, svc, "url", ws.DefaultURL)
-	promptCredential(reader, svc, ws.CredentialField, ws.CredentialDefault)
+	svc.Name = prompt(reader, "  name", svc.Name, ws.DefaultInstance)
+	svc.URL = prompt(reader, "  url", svc.URL, ws.DefaultURL)
+	if media.IsPlaintextToRemote(svc.URL) {
+		fmt.Printf("  %sWarning: API key/token will be sent in plaintext over HTTP to %s%s\n", display.Yellow, svc.URL, display.Reset)
+	}
+	promptCredential(reader, ws.CredentialField, hasCredential(svc, ws.CredentialField), ws.CredentialDefault, func(value string) {
+		setCredential(svc, ws.CredentialField, value)
+	})
 }
 
 // readLine reads a single line from the reader, trimming whitespace.
@@ -197,21 +202,10 @@ func promptBool(reader *bufio.Reader, label string, defaultVal bool) bool {
 	}
 }
 
-// promptString prompts for a service field.
-func promptString(reader *bufio.Reader, svc *config.ServiceConfig, field, fallback string) {
-	current := fieldValue(svc, field)
-	answer := prompt(reader, "  "+field, current, fallback)
-	setFieldValue(svc, field, answer)
-	if field == "url" && media.IsPlaintextToRemote(answer) {
-		fmt.Printf("  %sWarning: API key/token will be sent in plaintext over HTTP to %s%s\n", display.Yellow, answer, display.Reset)
-	}
-}
-
-// promptCredential is like promptString but masks the current value.
-func promptCredential(reader *bufio.Reader, svc *config.ServiceConfig, field, fallback string) {
-	current := fieldValue(svc, field)
-	displayVal := current
-	if displayVal != "" {
+// promptCredential prompts for a secret without ever formatting its value.
+func promptCredential(reader *bufio.Reader, field string, hasCurrent bool, fallback string, set func(string)) {
+	displayVal := ""
+	if hasCurrent {
 		displayVal = "******"
 	}
 
@@ -219,38 +213,30 @@ func promptCredential(reader *bufio.Reader, svc *config.ServiceConfig, field, fa
 	input := readLine(reader)
 
 	if input == "" {
-		if current != "" {
+		if hasCurrent {
 			return
 		}
 		if fallback != "" {
-			setFieldValue(svc, field, fallback)
+			set(fallback)
 		}
 		return
 	}
-	setFieldValue(svc, field, input)
+	set(input)
 }
 
-func fieldValue(svc *config.ServiceConfig, field string) string {
+func hasCredential(svc *config.ServiceConfig, field string) bool {
 	switch field {
-	case "name":
-		return svc.Name
-	case "url":
-		return svc.URL
 	case "token":
-		return svc.Token
+		return svc.Token != ""
 	case "api_key":
-		return svc.APIKey
+		return svc.APIKey != ""
 	default:
-		return ""
+		return false
 	}
 }
 
-func setFieldValue(svc *config.ServiceConfig, field, value string) {
+func setCredential(svc *config.ServiceConfig, field, value string) {
 	switch field {
-	case "name":
-		svc.Name = value
-	case "url":
-		svc.URL = value
 	case "token":
 		svc.Token = value
 	case "api_key":
