@@ -40,7 +40,7 @@ jobs:
           actual_tag="$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json tagName,isDraft --jq 'select(.isDraft == false) | .tagName')"
           [[ "$actual_tag" == "$RELEASE_TAG" ]]
       - name: Check out immutable release tag
-        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ env.RELEASE_TAG }}
           fetch-depth: 0
@@ -51,7 +51,7 @@ jobs:
           git tag --points-at HEAD | grep -Fx "$RELEASE_TAG"
           git merge-base --is-ancestor HEAD origin/main
       - name: Set up Go
-        uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
           go-version-file: go.mod
           cache: true
