@@ -1,6 +1,13 @@
 ## [v2.0.0] - 2026-07-06
 
 
+## [2.1.0](https://github.com/thewildhive/go-motd/compare/v2.0.1...v2.1.0) (2026-08-13)
+
+
+### Features
+
+* display short hostname in MOTD header ([#57](https://github.com/thewildhive/go-motd/issues/57)) ([483c0b2](https://github.com/thewildhive/go-motd/commit/483c0b27909be9aa7b2631c0068e615ab8d51fc1))
+
 ## [2.0.1](https://github.com/thewildhive/go-motd/compare/v2.0.0...v2.0.1) (2026-07-15)
 
 
