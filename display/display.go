@@ -63,6 +63,14 @@ func DotLabel(label string) {
 // Allows letters, digits, dots, and hyphens — the POSIX-safe subset.
 var safeHostnameRe = regexp.MustCompile(`^[a-zA-Z0-9.-]+$`)
 
+// shortHostname returns the first label of a hostname (text before the first dot).
+func shortHostname(hostname string) string {
+	if idx := strings.IndexByte(hostname, '.'); idx > 0 {
+		return hostname[:idx]
+	}
+	return hostname
+}
+
 func PrintHeader() {
 	fmt.Println()
 
@@ -70,6 +78,7 @@ func PrintHeader() {
 	if err != nil || hostname == "" {
 		hostname = "localhost"
 	}
+	hostname = shortHostname(hostname)
 
 	if hasFiglet() && safeHostnameRe.MatchString(hostname) {
 		cmd, err := util.SafeCommand("figlet", hostname)
