@@ -5,6 +5,29 @@ import (
 	"testing"
 )
 
+func TestShortHostname(t *testing.T) {
+	tests := []struct {
+		name     string
+		hostname string
+		want     string
+	}{
+		{"fqdn", "server1.example.com", "server1"},
+		{"simple", "myserver", "myserver"},
+		{"multi-label", "server.example.org", "server"},
+		{"hyphen", "my-server-1", "my-server-1"},
+		{"leading dot", ".hidden", ".hidden"},
+		{"trailing dot", "trailing.example.", "trailing"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := shortHostname(tt.hostname); got != tt.want {
+				t.Fatalf("shortHostname(%q) = %q, want %q", tt.hostname, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestSafeHostnameRegex(t *testing.T) {
 	tests := []struct {
 		name     string
