@@ -27,7 +27,7 @@ func TestDecodeJSONConfig_Success(t *testing.T) {
 			]
 		},
 		"system": {
-			"compose_dir": "/opt/compose",
+			"container_status": {"socket_path": "/var/run/motd-status/agent.sock", "max_age": "45s"},
 			"tank_mount": "/mnt/tank"
 		}
 	}
@@ -36,7 +36,7 @@ func TestDecodeJSONConfig_Success(t *testing.T) {
 	if err != nil {
 		t.Fatalf("DecodeJSONConfig failed: %v", err)
 	}
-	if cfg.System.ComposeDir != "/opt/compose" || cfg.System.TankMount != "/mnt/tank" {
+	if cfg.System.ContainerStatus == nil || cfg.System.ContainerStatus.SocketPath != "/var/run/motd-status/agent.sock" || cfg.System.ContainerStatus.MaxAge != "45s" || cfg.System.TankMount != "/mnt/tank" {
 		t.Fatalf("unexpected config: %+v", cfg.System)
 	}
 	if len(cfg.Services.Seerr) != 1 {
@@ -49,15 +49,30 @@ func TestDecodeJSONConfig_UnknownField(t *testing.T) {
 		"services": {
 			"plex": []
 		},
-		"system": {
-			"compose_dir": "/opt/compose"
-		},
+		"system": {},
 		"extra": true
 	}
 	`)
 	_, err := DecodeJSONConfig(configJSON)
 	if err == nil {
 		t.Fatal("expected unknown field to fail")
+	}
+}
+
+func TestDecodeJSONConfig_ComposeDirMigrationError(t *testing.T) {
+	_, err := DecodeJSONConfig([]byte(`{"system":{"compose_dir":"/opt/compose"}}`))
+	if _, ok := err.(*ComposeDirMigrationError); !ok {
+		t.Fatalf("expected ComposeDirMigrationError, got %T (%v)", err, err)
+	}
+}
+
+func TestDecodeJSONConfig_DefaultContainerStatusPath(t *testing.T) {
+	cfg, err := DecodeJSONConfig([]byte(`{"system":{"container_status":{"max_age":"1m"}}}`))
+	if err != nil {
+		t.Fatalf("DecodeJSONConfig failed: %v", err)
+	}
+	if cfg.System.ContainerStatus == nil || cfg.System.ContainerStatus.MaxAge != "1m" {
+		t.Fatalf("unexpected container status config: %+v", cfg.System.ContainerStatus)
 	}
 }
 
@@ -115,7 +130,7 @@ func TestLoadFromPaths_NoConfigReturnsEmpty(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected no config and no error, got %v", err)
 	}
-	if cfg.Services.Plex != nil || cfg.System.ComposeDir != "" {
+	if cfg.Services.Plex != nil || cfg.System.ContainerStatus != nil {
 		t.Fatalf("expected empty config")
 	}
 }
@@ -185,7 +200,6 @@ func TestLoadJSONConfigFromPaths_ParsesFirstValid(t *testing.T) {
 func TestWrite(t *testing.T) {
 	tempDir := t.TempDir()
 	cfg := Config{}
-	cfg.System.ComposeDir = "/opt/compose"
 	cfg.System.TankMount = "/mnt/tank"
 
 	dst := filepath.Join(tempDir, "config.json")
@@ -196,9 +210,6 @@ func TestWrite(t *testing.T) {
 	loaded, err := LoadJSONConfigFromPaths([]string{dst}, nil)
 	if err != nil {
 		t.Fatalf("failed to reload written config: %v", err)
-	}
-	if loaded.System.ComposeDir != "/opt/compose" {
-		t.Fatalf("compose_dir mismatch: %q", loaded.System.ComposeDir)
 	}
 	if loaded.System.TankMount != "/mnt/tank" {
 		t.Fatalf("tank_mount mismatch: %q", loaded.System.TankMount)
@@ -320,34 +331,21 @@ func TestWrite_AtomicReplacesExisting(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.json")
 
-	orig := Config{System: struct {
-		ComposeDir string `json:"compose_dir"`
-		TankMount  string `json:"tank_mount"`
-		Network    struct {
-			Interface string `json:"interface,omitempty"`
-		} `json:"network,omitempty"`
-	}{ComposeDir: "/orig", TankMount: "/mnt/orig"}}
+	orig := Config{}
+	orig.System.TankMount = "/mnt/orig"
 	if err := Write(path, orig); err != nil {
 		t.Fatalf("initial Write failed: %v", err)
 	}
 
-	updated := Config{System: struct {
-		ComposeDir string `json:"compose_dir"`
-		TankMount  string `json:"tank_mount"`
-		Network    struct {
-			Interface string `json:"interface,omitempty"`
-		} `json:"network,omitempty"`
-	}{ComposeDir: "/updated", TankMount: "/mnt/updated"}}
+	updated := Config{}
+	updated.System.TankMount = "/mnt/updated"
 	if err := Write(path, updated); err != nil {
 		t.Fatalf("second Write failed: %v", err)
 	}
 
-	loaded, err := LoadJSONConfigFromPaths([]string{path}, nil)
+	_, err := LoadJSONConfigFromPaths([]string{path}, nil)
 	if err != nil {
 		t.Fatalf("failed to reload: %v", err)
-	}
-	if loaded.System.ComposeDir != "/updated" {
-		t.Fatalf("expected /updated, got %q", loaded.System.ComposeDir)
 	}
 }
 

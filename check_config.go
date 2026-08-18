@@ -4,10 +4,12 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 
 	"motd/config"
 	"motd/display"
 	"motd/media"
+	"motd/system"
 )
 
 func flagSet(name string) *flag.FlagSet {
@@ -71,9 +73,22 @@ func validateConfig(cfg config.Config) []configIssue {
 	validateServices("radarr", cfg.Services.Radarr, false)
 	validateServices("seerr", cfg.Services.Seerr, false)
 
-	if cfg.System.ComposeDir != "" {
-		if info, err := os.Stat(cfg.System.ComposeDir); err != nil || !info.IsDir() {
-			issues = append(issues, configIssue{Level: "warning", Message: "compose_dir is set but is not a readable directory"})
+	if statusCfg := cfg.System.ContainerStatus; statusCfg != nil {
+		if err := system.ValidateContainerStatusConfig(statusCfg); err != nil {
+			issues = append(issues, configIssue{Level: "error", Message: err.Error()})
+		} else {
+			path := strings.TrimSpace(statusCfg.SocketPath)
+			if path == "" {
+				path = system.DefaultContainerStatusSocket
+			}
+			usable, err := system.ContainerStatusSocketIsUsable(path)
+			if err != nil {
+				issues = append(issues, configIssue{Level: "error", Message: err.Error()})
+			} else if !usable {
+				issues = append(issues, configIssue{Level: "warning", Message: fmt.Sprintf("container status socket %s does not exist", path)})
+			} else if _, ok := system.GetContainerStatus(system.ConfigAccessorFrom(cfg), false); !ok {
+				issues = append(issues, configIssue{Level: "error", Message: "container status socket exists but did not return a valid current status"})
+			}
 		}
 	}
 	if cfg.System.TankMount != "" {

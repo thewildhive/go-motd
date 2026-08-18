@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"motd/config"
 	"motd/display"
@@ -14,22 +15,31 @@ import (
 )
 
 type outputReport struct {
-	Version string          `json:"version"`
-	System  systemReport    `json:"system"`
-	Compose *composeReport  `json:"compose,omitempty"`
-	Media   []mediaJSONItem `json:"media,omitempty"`
+	Version    string            `json:"version"`
+	System     systemReport      `json:"system"`
+	Containers *containersReport `json:"containers,omitempty"`
+	Media      []mediaJSONItem   `json:"media,omitempty"`
 }
 
 type systemReport struct {
-	ComposeDir string `json:"compose_dir,omitempty"`
-	TankMount  string `json:"tank_mount,omitempty"`
-	Interface  string `json:"interface,omitempty"`
+	TankMount string `json:"tank_mount,omitempty"`
+	Interface string `json:"interface,omitempty"`
 }
 
-type composeReport struct {
-	Online int    `json:"online"`
-	Total  int    `json:"total"`
-	Status string `json:"status"`
+type containersReport struct {
+	ProtocolVersion int                `json:"protocol_version"`
+	ObservedAt      string             `json:"observed_at"`
+	Online          int                `json:"online"`
+	Total           int                `json:"total"`
+	Status          string             `json:"status"`
+	Workloads       []workloadJSONItem `json:"workloads"`
+}
+
+type workloadJSONItem struct {
+	Name   string `json:"name"`
+	State  string `json:"state"`
+	Health string `json:"health"`
+	Online bool   `json:"online"`
 }
 
 type mediaJSONItem struct {
@@ -70,18 +80,24 @@ func renderJSON(cfg config.Config, serviceSet map[string]bool, client *http.Clie
 	report := outputReport{
 		Version: VERSION,
 		System: systemReport{
-			ComposeDir: cfg.System.ComposeDir,
-			TankMount:  cfg.System.TankMount,
-			Interface:  cfg.System.Network.Interface,
+			TankMount: cfg.System.TankMount,
+			Interface: cfg.System.Network.Interface,
 		},
 	}
 
-	if composeStatus, ok := system.GetComposeStatus(sysCfg, debug); ok {
-		status := fmt.Sprintf("%d of %d online", composeStatus.Online, composeStatus.Total)
-		if composeStatus.Online == composeStatus.Total {
-			status = "All containers online"
+	if containerStatus, ok := system.GetContainerStatus(sysCfg, debug); ok {
+		workloads := make([]workloadJSONItem, 0, len(containerStatus.Workloads))
+		for _, workload := range containerStatus.Workloads {
+			workloads = append(workloads, workloadJSONItem{Name: workload.Name, State: workload.State, Health: workload.Health, Online: workload.Online})
 		}
-		report.Compose = &composeReport{Online: composeStatus.Online, Total: composeStatus.Total, Status: status}
+		report.Containers = &containersReport{
+			ProtocolVersion: containerStatus.ProtocolVersion,
+			ObservedAt:      containerStatus.ObservedAt.UTC().Format(time.RFC3339Nano),
+			Online:          containerStatus.Online,
+			Total:           containerStatus.Total,
+			Status:          containerStatus.Status,
+			Workloads:       workloads,
+		}
 	}
 
 	for _, item := range media.CollectMediaStatuses(cfg, serviceSet, client, debug) {

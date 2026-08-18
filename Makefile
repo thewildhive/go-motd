@@ -12,7 +12,7 @@ GO_BUILD_FLAGS := -buildvcs=false
 LDFLAGS := -ldflags="-s -w -X main.VERSION=$(VERSION) -X main.BUILDDATE=$(BUILDDATE)"
 INSTALL_PATH := /usr/local/bin
 
-.PHONY: all cache-dirs build build-optimized clean test smoke check check-all check-workflows install uninstall cross-compile package release help
+.PHONY: all cache-dirs build build-optimized clean test test-status-agent-integration smoke check check-all check-workflows install uninstall cross-compile package release help
 
 all: build-optimized
 
@@ -32,6 +32,9 @@ clean:
 
 test: cache-dirs
 	$(GO) test -count=1 ./...
+
+test-status-agent-integration:
+	bash scripts/test-status-agent-integration.sh
 
 # Authoritative local gate. This intentionally includes every published target.
 check: cache-dirs
@@ -95,6 +98,7 @@ help:
 	@echo "  make build             Build bin/motd"
 	@echo "  make build-optimized   Build an optimized bin/motd"
 	@echo "  make check             Run the authoritative local CI gate"
+	@echo "  make test-status-agent-integration  Test against the sibling status agent fixture server"
 	@echo "  make check-all         Alias for make check"
 	@echo "  make smoke             Build and run help/version smoke tests"
 	@echo "  make cross-compile     Build all five supported raw binaries"

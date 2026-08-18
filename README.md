@@ -64,7 +64,7 @@ Supported config paths (priority order):
 
 Use `-config /path/to/config.json` to load a specific file, or `-no-config` to force system-only output. When `-config` is set, that exact JSON file must exist and parse successfully.
 
-Create a config file only when you want media integrations or custom system paths such as `compose_dir`, `tank_mount`, or a fixed network interface. When `compose_dir` points at directories containing Compose files, `motd` shows a best-effort Docker Compose summary such as `All containers online` or `X of Y online`; missing or unavailable Compose data is skipped silently.
+Create a config file only when you want media integrations, rootless container status, or custom system paths such as `tank_mount` or a fixed network interface. When `system.container_status` is configured, `motd` polls the local `motd-status-agent` Unix socket and shows a health-aware `Containers` summary. Missing or unavailable agent data is skipped silently.
 
 If a legacy YAML config is detected (`config.yml`/`config.yaml`), `motd` exits with an unsupported-config message. Automatic YAML migration was removed in MOTD 2.0; see `MIGRATE_v2.md` for manual guidance.
 
@@ -115,7 +115,10 @@ If a legacy YAML config is detected (`config.yml`/`config.yaml`), `motd` exits w
     ]
   },
   "system": {
-    "compose_dir": "/opt/apps/compose",
+    "container_status": {
+      "socket_path": "/var/run/motd-status/agent.sock",
+      "max_age": "30s"
+    },
     "tank_mount": "/mnt/tank",
     "network": {
       "interface": "eth0"
@@ -134,7 +137,7 @@ Windows temperature and bandwidth can be unavailable on many systems because the
 
 ### Trusted Directories for Optional Tools
 
-Optional tools (docker, vnstat, who, figlet, etc.) are resolved from a restricted set of trusted directories to prevent PATH hijacking in privileged contexts:
+Optional tools (vnstat, who, figlet, etc.) are resolved from a restricted set of trusted directories to prevent PATH hijacking in privileged contexts:
 
 | Platform | Trusted Directories |
 |----------|-------------------|
@@ -149,6 +152,20 @@ sudo ln -s /snap/bin/docker /usr/bin/docker
 ```
 
 Run with `-d` (debug) to see which tools are not found and why configured media services are skipped.
+
+### Status Agent Integration Test
+
+When the sibling `../motd-status-agent` checkout is available, run the
+fixture-backed end-to-end test:
+
+```bash
+make test-status-agent-integration
+```
+
+This builds the real agent fixture server and `go-motd`, connects them through a
+temporary Unix socket, verifies the expected 2-of-5 aggregate and JSON workload
+details, checks that terminal output remains aggregate-only, and verifies that
+agent failure omits container status instead of reporting zero or cached data.
 
 ## Seerr Integration
 

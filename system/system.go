@@ -6,7 +6,6 @@ import (
 	"time"
 
 	"motd/config"
-	"motd/display"
 	"motd/util"
 )
 
@@ -17,40 +16,17 @@ const (
 	GB = 1024 * MB
 )
 
-func ShowDocker(debug bool) {
-	if !util.HasCommand("docker") {
-		return
-	}
-
-	cmd, err := util.SafeCommand("docker", "ps", "-q")
-	if err != nil {
-		return
-	}
-	output, err := cmd.Output()
-	if err != nil {
-		return
-	}
-
-	count := len(strings.Split(strings.TrimSpace(string(output)), "\n"))
-	if strings.TrimSpace(string(output)) == "" {
-		count = 0
-	}
-
-	display.DotLabel("Docker Containers")
-	fmt.Printf("%s%d running%s\n", display.Blue, count, display.Reset)
-}
-
 // ConfigAccessor provides system-relevant config values
 // without exposing the full Config struct to system functions.
 type ConfigAccessor struct {
-	ComposeDir       string
+	ContainerStatus  *config.ContainerStatusConfig
 	TankMount        string
 	NetworkInterface string
 }
 
 func ConfigAccessorFrom(cfg config.Config) ConfigAccessor {
 	return ConfigAccessor{
-		ComposeDir:       cfg.System.ComposeDir,
+		ContainerStatus:  cfg.System.ContainerStatus,
 		TankMount:        cfg.System.TankMount,
 		NetworkInterface: cfg.System.Network.Interface,
 	}

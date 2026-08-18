@@ -280,7 +280,10 @@ create_sample_config() {
     "seerr": []
   },
   "system": {
-    "compose_dir": "/opt/apps/compose",
+    "container_status": {
+      "socket_path": "/var/run/motd-status/agent.sock",
+      "max_age": "30s"
+    },
     "tank_mount": "/mnt/tank",
     "network": {
       "interface": "eth0"
@@ -303,7 +306,10 @@ EOF
     "seerr": []
   },
   "system": {
-    "compose_dir": "/opt/apps/compose",
+    "container_status": {
+      "socket_path": "/var/run/motd-status/agent.sock",
+      "max_age": "30s"
+    },
     "tank_mount": "/mnt/tank",
     "network": {
       "interface": "eth0"
