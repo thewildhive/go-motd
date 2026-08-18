@@ -1,6 +1,13 @@
 ## [v2.0.0] - 2026-07-06
 
 
+## [2.2.0](https://github.com/thewildhive/go-motd/compare/v2.1.0...v2.2.0) (2026-08-18)
+
+
+### Features
+
+* **status:** consume rootless container agent ([#60](https://github.com/thewildhive/go-motd/issues/60)) ([f0f4bdf](https://github.com/thewildhive/go-motd/commit/f0f4bdf27c319574c4a34a1c5c63b403b39bdeae))
+
 ## [2.1.0](https://github.com/thewildhive/go-motd/compare/v2.0.1...v2.1.0) (2026-08-13)
 
 
