@@ -70,6 +70,7 @@ func handleConfigure() {
 	}
 	cfg.System.Network.Interface = prompt(reader, "Network interface", cfg.System.Network.Interface, iface)
 	cfg.System.TankMount = prompt(reader, "Tank mount path (leave empty to skip)", cfg.System.TankMount, "")
+	configureContainerStatus(reader, &cfg)
 
 	// --- Service Setup ---
 	fmt.Printf("\n%s━━━ Service Setup ── toggle services on/off ──%s\n", display.Bold, display.Reset)
@@ -92,6 +93,22 @@ func handleConfigure() {
 	}
 
 	fmt.Printf("\n%sConfiguration saved to %s%s\n", display.Green, cfgPath, display.Reset)
+}
+
+func configureContainerStatus(reader *bufio.Reader, cfg *config.Config) {
+	if cfg.System.ContainerStatus == nil {
+		if !promptBool(reader, "Setup container status agent", false) {
+			return
+		}
+		cfg.System.ContainerStatus = &config.ContainerStatusConfig{}
+	} else if !promptBool(reader, "Keep container status agent", true) {
+		cfg.System.ContainerStatus = nil
+		return
+	}
+
+	status := cfg.System.ContainerStatus
+	status.SocketPath = prompt(reader, "Container status socket", status.SocketPath, system.DefaultContainerStatusSocket)
+	status.MaxAge = prompt(reader, "Maximum status age", status.MaxAge, system.DefaultContainerStatusMaxAge.String())
 }
 
 // configureServiceSlice adds or modifies service instances defined by ws.

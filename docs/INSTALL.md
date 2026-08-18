@@ -90,7 +90,7 @@ mkdir -p ~/.config/motd
 cp config.json.sample ~/.config/motd/config.json
 ```
 
-Then edit values for your environment. Media services are opt-in and each enabled instance must include a URL and token/API key. HTTPS is required for remote service URLs; plaintext HTTP is accepted only for loopback hosts such as `localhost`, `127.0.0.1`, and `::1`. If `compose_dir` points at directories with Compose files, `motd` shows a best-effort Docker Compose summary and skips it silently when unavailable.
+Then edit values for your environment. Media services are opt-in and each enabled instance must include a URL and token/API key. HTTPS is required for remote service URLs; plaintext HTTP is accepted only for loopback hosts such as `localhost`, `127.0.0.1`, and `::1`. Configure `system.container_status` to consume `motd-status-agent` over its local Unix socket; unavailable status is skipped silently.
 
 ### Optional Media Services
 
@@ -108,7 +108,7 @@ Seerr pending requests are read from:
 
 Optional commands used for richer output:
 - `vnstat` — monthly bandwidth estimates (falls back gracefully if absent)
-- `docker` — container count
+- `motd-status-agent` — rootless Podman workload status, when configured
 - `who` — logged-in user count
 
 Most system information (memory, disk, uptime, CPU load, temperature, process count, network interface) is collected via `/proc` and `syscall` directly — no external tools required.
@@ -118,7 +118,7 @@ Windows system information uses PowerShell/CIM where possible and falls back to 
 Linux install example:
 
 ```bash
-sudo apt install vnstat docker.io
+sudo apt install vnstat
 ```
 
 ## Verify Installation

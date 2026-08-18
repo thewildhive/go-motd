@@ -101,8 +101,7 @@ func main() {
 
 	display.PrintSection("Services & Resources")
 
-	system.ShowDocker(*debug)
-	system.ShowCompose(sysCfg, *debug)
+	system.ShowContainers(sysCfg, *debug)
 	system.ShowProcesses(sysCfg, *debug)
 	system.ShowUser(sysCfg, *debug)
 	system.ShowDisk(sysCfg, *debug)

@@ -31,7 +31,6 @@ System fields:
 
 | YAML field | JSON field |
 |------------|------------|
-| `compose_dir` | `system.compose_dir` |
 | `tank_mount` | `system.tank_mount` |
 | `interface` | `system.network.interface` |
 
@@ -63,7 +62,10 @@ Organizr is not supported in MOTD 2.0. Leave Organizr entries out of the JSON co
     "seerr": []
   },
   "system": {
-    "compose_dir": "/opt/apps/compose",
+    "container_status": {
+      "socket_path": "/var/run/motd-status/agent.sock",
+      "max_age": "30s"
+    },
     "tank_mount": "/mnt/tank",
     "network": {
       "interface": "eth0"
@@ -73,6 +75,8 @@ Organizr is not supported in MOTD 2.0. Leave Organizr entries out of the JSON co
 ```
 
 Remote media service URLs should use HTTPS. Plaintext HTTP is accepted only for loopback hosts such as `localhost`, `127.0.0.1`, and `::1`.
+
+The former `system.compose_dir` setting is removed. Configurations containing it fail with a migration error; remove it and configure `system.container_status` only after installing `motd-status-agent`.
 
 After writing the JSON file, run:
 

@@ -22,6 +22,21 @@ type ServiceConfig struct {
 	Enabled bool   `json:"enabled"`
 }
 
+type ContainerStatusConfig struct {
+	SocketPath string `json:"socket_path,omitempty"`
+	MaxAge     string `json:"max_age,omitempty"`
+}
+
+type NetworkConfig struct {
+	Interface string `json:"interface,omitempty"`
+}
+
+type SystemConfig struct {
+	ContainerStatus *ContainerStatusConfig `json:"container_status,omitempty"`
+	TankMount       string                 `json:"tank_mount"`
+	Network         NetworkConfig          `json:"network,omitempty"`
+}
+
 type Config struct {
 	Services struct {
 		Plex     []ServiceConfig `json:"plex"`
@@ -30,13 +45,7 @@ type Config struct {
 		Radarr   []ServiceConfig `json:"radarr"`
 		Seerr    []ServiceConfig `json:"seerr"`
 	} `json:"services"`
-	System struct {
-		ComposeDir string `json:"compose_dir"`
-		TankMount  string `json:"tank_mount"`
-		Network    struct {
-			Interface string `json:"interface,omitempty"`
-		} `json:"network,omitempty"`
-	} `json:"system"`
+	System SystemConfig `json:"system"`
 }
 
 var ErrNoJSONConfig = errors.New("no JSON config files found")
@@ -45,6 +54,12 @@ type LegacyConfigError struct {
 	LegacyPath   string
 	RequiredPath string
 	FallbackPath string
+}
+
+type ComposeDirMigrationError struct{}
+
+func (e *ComposeDirMigrationError) Error() string {
+	return "system.compose_dir was removed; configure system.container_status.socket_path for motd-status-agent"
 }
 
 func (e *LegacyConfigError) Error() string {
@@ -72,6 +87,14 @@ func GetLegacyConfigPaths() []string {
 
 func DecodeJSONConfig(data []byte) (Config, error) {
 	var parsedConfig Config
+	var raw struct {
+		System struct {
+			ComposeDir json.RawMessage `json:"compose_dir"`
+		} `json:"system"`
+	}
+	if err := json.Unmarshal(data, &raw); err == nil && raw.System.ComposeDir != nil {
+		return parsedConfig, &ComposeDirMigrationError{}
+	}
 
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
