@@ -1,6 +1,13 @@
 ## [v2.0.0] - 2026-07-06
 
 
+## [2.2.1](https://github.com/thewildhive/go-motd/compare/v2.2.0...v2.2.1) (2026-09-14)
+
+
+### Bug Fixes
+
+* close configuration and platform audit gaps ([#62](https://github.com/thewildhive/go-motd/issues/62)) ([e559adb](https://github.com/thewildhive/go-motd/commit/e559adb07105f20b1f49225ae9aaa124500e4e72))
+
 ## [2.2.0](https://github.com/thewildhive/go-motd/compare/v2.1.0...v2.2.0) (2026-08-18)
 
 
