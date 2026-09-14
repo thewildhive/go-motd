@@ -83,14 +83,14 @@ Use `motd -config /path/to/config.json` to load a specific file, or `motd -no-co
 
 Legacy YAML files (`config.yml` / `config.yaml`) are not loaded at runtime, and automatic YAML migration was removed in MOTD 2.0. See `MIGRATE_v2.md` for manual migration guidance. Legacy Organizr entries are unsupported because Organizr support was removed.
 
-Create a config only when you want media integrations or custom system paths:
+Create a config only when you want media integrations or custom system paths. The wizard can write either the default location or an explicit path:
 
 ```bash
-mkdir -p ~/.config/motd
-cp config.json.sample ~/.config/motd/config.json
+motd configure
+motd configure -config /path/to/config.json
 ```
 
-Then edit values for your environment. Media services are opt-in and each enabled instance must include a URL and token/API key. HTTPS is required for remote service URLs; plaintext HTTP is accepted only for loopback hosts such as `localhost`, `127.0.0.1`, and `::1`. Configure `system.container_status` to consume `motd-status-agent` over its local Unix socket; unavailable status is skipped silently.
+Media services are opt-in and each enabled instance must include a URL and token/API key. HTTPS is required for remote service URLs; plaintext HTTP is accepted only for loopback hosts such as `localhost`, `127.0.0.1`, and `::1`. Configure `system.container_status` to consume `motd-status-agent` over its local Unix socket; unavailable status is omitted from normal output and explained by `motd -d`.
 
 ### Optional Media Services
 
@@ -111,9 +111,9 @@ Optional commands used for richer output:
 - `motd-status-agent` — rootless Podman workload status, when configured
 - `who` — logged-in user count
 
-Most system information (memory, disk, uptime, CPU load, temperature, process count, network interface) is collected via `/proc` and `syscall` directly — no external tools required.
+On Linux, most system information (memory, disk, uptime, CPU load, temperature, process count, network interface) is collected via `/proc` and system calls directly — no external tools required.
 
-Windows system information uses PowerShell/CIM where possible and falls back to built-in commands such as `wmic` and `tasklist`. CPU temperature and bandwidth may be unavailable on Windows depending on sensor/collector support.
+Windows system information uses PowerShell/CIM where possible and falls back to built-in commands such as `wmic` and `tasklist`. CPU temperature depends on sensor support; bandwidth reporting is not currently implemented on Windows.
 
 Linux install example:
 

@@ -133,7 +133,7 @@ Use `config.json.sample` as the complete reference template. Media services are 
 
 `motd` displays core system information without config. Linux/macOS use standard Unix tools where available. Windows uses PowerShell/CIM first and falls back to WMIC/tasklist where possible.
 
-Windows temperature and bandwidth can be unavailable on many systems because thermal sensors and `vnstat` are not consistently exposed by default.
+Windows temperature can be unavailable when firmware does not expose a compatible thermal sensor. Bandwidth reporting is not currently implemented on Windows.
 
 ### Trusted Directories for Optional Tools
 
@@ -145,10 +145,10 @@ Optional tools (vnstat, who, figlet, etc.) are resolved from a restricted set of
 | macOS | `/usr/bin`, `/usr/sbin`, `/bin`, `/sbin`, `/usr/local/bin`, `/opt/homebrew/bin` |
 | Windows | `C:\Windows\System32`, `C:\Windows\System32\WindowsPowerShell\v1.0` |
 
-If you install optional tools in non-standard paths (e.g., `/snap/bin/docker`, `~/bin/figlet`), create a symlink from a trusted directory:
+If you install an optional tool in a non-standard path (for example `~/bin/figlet`), create a symlink from a trusted directory:
 
 ```bash
-sudo ln -s /snap/bin/docker /usr/bin/docker
+sudo ln -s "$HOME/bin/figlet" /usr/local/bin/figlet
 ```
 
 Run with `-d` (debug) to see which tools are not found and why configured media services are skipped.
@@ -189,12 +189,12 @@ The self-update mechanism provides defense-in-depth against supply-chain attacks
 | HTTPS | Transport encryption; prevents MITM during download | CA compromise, TLS downgrade |
 | SHA-256 checksums | Detects corruption or tampering of the downloaded binary | Checksum file is also tampered (no origin verification) |
 | Ed25519 signature | Proves `checksums.txt` was published by the maintainer | Private signing key is compromised |
-| Trusted PATH | Prevents `motd self-update` from launching untrusted helper binaries | System trusted directories are writable by attacker |
+| Trusted command paths | Prevents `motd self-update` from launching helpers from the current directory or user PATH | Trusted system directories are writable by an attacker |
 
 Operational assumptions:
 - The signing private key is stored as a GitHub repository secret (`SIGNING_PRIVATE_KEY`)
 - The corresponding public key is compiled into the binary (`checksumsPublicKeyHex`)
-- Release Please uses `RELEASE_APP_ID` and `RELEASE_APP_PRIVATE_KEY` to obtain a short-lived GitHub App token
+- Release Please uses `RELEASE_APP_CLIENT_ID` and `RELEASE_APP_PRIVATE_KEY` to obtain a short-lived GitHub App token
 - Releases are created from reviewed release PRs; assets are built from the immutable tag and signed during publication
 - `motd self-update` requires write access to the binary's directory; use `sudo` or install to `~/.local/bin` if needed
 - Cross-device binary replacement uses a staged copy in the target directory before atomic rename
@@ -230,7 +230,7 @@ make check
 
 ```bash
 make cross-compile
-make package
+make package VERSION=X.Y.Z SIGNING_KEY_FILE=/path/to/ed25519-private-key.pem
 ```
 
 Manual examples:
