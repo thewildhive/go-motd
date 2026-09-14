@@ -84,6 +84,18 @@ func TestDecodeJSONConfig_MultipleObjects(t *testing.T) {
 	}
 }
 
+func TestDecodeJSONConfig_RejectsNull(t *testing.T) {
+	if _, err := DecodeJSONConfig([]byte(`null`)); err == nil {
+		t.Fatal("expected top-level null to fail")
+	}
+}
+
+func TestLoadJSONConfigFile_RejectsNonRegularFile(t *testing.T) {
+	if _, err := LoadJSONConfigFile(t.TempDir(), nil); err == nil || !strings.Contains(err.Error(), "not a regular file") {
+		t.Fatalf("expected non-regular file error, got %v", err)
+	}
+}
+
 func TestLoadFromPaths_PrefersJSON(t *testing.T) {
 	jsonPath := filepath.Join(t.TempDir(), "config.json")
 	if err := os.WriteFile(jsonPath, []byte(`{"services": {}}`), 0644); err != nil {

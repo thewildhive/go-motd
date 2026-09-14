@@ -573,6 +573,54 @@ func TestAllServicesCapsServicesPerType(t *testing.T) {
 	}
 }
 
+func TestAllServicesLimitCountsOnlyReadyServices(t *testing.T) {
+	cfg := config.Config{}
+	cfg.Services.Plex = append(cfg.Services.Plex, config.ServiceConfig{Enabled: false})
+	for i := 0; i < MaxMediaServicesPerType(); i++ {
+		cfg.Services.Plex = append(cfg.Services.Plex, config.ServiceConfig{
+			Name: fmt.Sprintf("Plex%d", i), URL: "https://plex.example.com", Token: "secret", Enabled: true,
+		})
+	}
+
+	if got := len(AllServices(cfg, nil)); got != MaxMediaServicesPerType() {
+		t.Fatalf("expected %d ready services after a skipped entry, got %d", MaxMediaServicesPerType(), got)
+	}
+}
+
+func TestMediaRequestDoesNotFollowRedirects(t *testing.T) {
+	redirectTargetHit := false
+	target := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		redirectTargetHit = true
+		if token := r.Header.Get("X-Api-Key"); token != "" {
+			t.Errorf("redirect target received credential %q", token)
+		}
+	}))
+	defer target.Close()
+
+	source := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Redirect(w, r, target.URL, http.StatusFound)
+	}))
+	defer source.Close()
+
+	req, err := http.NewRequest(http.MethodGet, source.URL, nil)
+	if err != nil {
+		t.Fatalf("failed to build request: %v", err)
+	}
+	req.Header.Set("X-Api-Key", "secret")
+	resp, err := doMediaRequest(source.Client(), req)
+	if err != nil {
+		t.Fatalf("media request failed: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusFound {
+		t.Fatalf("expected redirect response, got %d", resp.StatusCode)
+	}
+	if redirectTargetHit {
+		t.Fatal("expected media client not to follow redirect")
+	}
+}
+
 func TestCollectMediaStatusesLimitsConcurrency(t *testing.T) {
 	serviceCount := MaxConcurrentMediaChecks() + 3
 	entered := make(chan struct{}, serviceCount)

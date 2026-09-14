@@ -86,31 +86,34 @@ func GetLegacyConfigPaths() []string {
 }
 
 func DecodeJSONConfig(data []byte) (Config, error) {
-	var parsedConfig Config
+	var parsedConfig *Config
 	var raw struct {
 		System struct {
 			ComposeDir json.RawMessage `json:"compose_dir"`
 		} `json:"system"`
 	}
 	if err := json.Unmarshal(data, &raw); err == nil && raw.System.ComposeDir != nil {
-		return parsedConfig, &ComposeDirMigrationError{}
+		return Config{}, &ComposeDirMigrationError{}
 	}
 
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	decoder.DisallowUnknownFields()
 
 	if err := decoder.Decode(&parsedConfig); err != nil {
-		return parsedConfig, err
+		return Config{}, err
+	}
+	if parsedConfig == nil {
+		return Config{}, fmt.Errorf("config file must contain a JSON object")
 	}
 
 	if err := decoder.Decode(&struct{}{}); err != io.EOF {
 		if err == nil {
-			return parsedConfig, fmt.Errorf("config file must contain a single JSON object")
+			return Config{}, fmt.Errorf("config file must contain a single JSON object")
 		}
-		return parsedConfig, err
+		return Config{}, err
 	}
 
-	return parsedConfig, nil
+	return *parsedConfig, nil
 }
 
 func LoadJSONConfigFromPaths(paths []string, debugFn func(string, ...interface{})) (Config, error) {
@@ -125,8 +128,8 @@ func LoadJSONConfigFromPaths(paths []string, debugFn func(string, ...interface{}
 			return loadedConfig, fmt.Errorf("failed to stat config file %s: %w", configPath, err)
 		}
 
-		if info.IsDir() {
-			return loadedConfig, fmt.Errorf("config file path is a directory: %s", configPath)
+		if !info.Mode().IsRegular() {
+			return loadedConfig, fmt.Errorf("config file path is not a regular file: %s", configPath)
 		}
 
 		if debugFn != nil {
@@ -165,8 +168,8 @@ func LoadJSONConfigFile(configPath string, debugFn func(string, ...interface{}))
 		return loadedConfig, fmt.Errorf("failed to stat config file %s: %w", configPath, err)
 	}
 
-	if info.IsDir() {
-		return loadedConfig, fmt.Errorf("config file path is a directory: %s", configPath)
+	if !info.Mode().IsRegular() {
+		return loadedConfig, fmt.Errorf("config file path is not a regular file: %s", configPath)
 	}
 
 	if debugFn != nil {

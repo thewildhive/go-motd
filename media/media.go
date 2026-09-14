@@ -110,8 +110,9 @@ func allServices(cfg config.Config, selected map[string]bool, debug bool) []Serv
 			cappedServiceCount(len(cfg.Services.Sonarr))+cappedServiceCount(len(cfg.Services.Radarr))+
 			cappedServiceCount(len(cfg.Services.Seerr)))
 
+	plexCount := 0
 	for i := range cfg.Services.Plex {
-		if !serviceSelected(selected, "plex") || i >= MaxMediaServicesPerType() {
+		if !serviceSelected(selected, "plex") || plexCount >= MaxMediaServicesPerType() {
 			break
 		}
 		svc := cfg.Services.Plex[i]
@@ -120,9 +121,11 @@ func allServices(cfg config.Config, selected map[string]bool, debug bool) []Serv
 			continue
 		}
 		out = append(out, plexService{cfg: svc})
+		plexCount++
 	}
+	jellyfinCount := 0
 	for i := range cfg.Services.Jellyfin {
-		if !serviceSelected(selected, "jellyfin") || i >= MaxMediaServicesPerType() {
+		if !serviceSelected(selected, "jellyfin") || jellyfinCount >= MaxMediaServicesPerType() {
 			break
 		}
 		svc := cfg.Services.Jellyfin[i]
@@ -131,9 +134,11 @@ func allServices(cfg config.Config, selected map[string]bool, debug bool) []Serv
 			continue
 		}
 		out = append(out, jellyfinService{cfg: svc})
+		jellyfinCount++
 	}
+	sonarrCount := 0
 	for i := range cfg.Services.Sonarr {
-		if !serviceSelected(selected, "sonarr") || i >= MaxMediaServicesPerType() {
+		if !serviceSelected(selected, "sonarr") || sonarrCount >= MaxMediaServicesPerType() {
 			break
 		}
 		svc := cfg.Services.Sonarr[i]
@@ -142,9 +147,11 @@ func allServices(cfg config.Config, selected map[string]bool, debug bool) []Serv
 			continue
 		}
 		out = append(out, sonarrService{cfg: svc})
+		sonarrCount++
 	}
+	radarrCount := 0
 	for i := range cfg.Services.Radarr {
-		if !serviceSelected(selected, "radarr") || i >= MaxMediaServicesPerType() {
+		if !serviceSelected(selected, "radarr") || radarrCount >= MaxMediaServicesPerType() {
 			break
 		}
 		svc := cfg.Services.Radarr[i]
@@ -153,9 +160,11 @@ func allServices(cfg config.Config, selected map[string]bool, debug bool) []Serv
 			continue
 		}
 		out = append(out, radarrService{cfg: svc})
+		radarrCount++
 	}
+	seerrCount := 0
 	for i := range cfg.Services.Seerr {
-		if !serviceSelected(selected, "seerr") || i >= MaxMediaServicesPerType() {
+		if !serviceSelected(selected, "seerr") || seerrCount >= MaxMediaServicesPerType() {
 			break
 		}
 		svc := cfg.Services.Seerr[i]
@@ -164,6 +173,7 @@ func allServices(cfg config.Config, selected map[string]bool, debug bool) []Serv
 			continue
 		}
 		out = append(out, seerrService{cfg: svc})
+		seerrCount++
 	}
 	return out
 }
@@ -370,6 +380,14 @@ func decodeJSONResponse(resp *http.Response, target interface{}) error {
 	return nil
 }
 
+func doMediaRequest(client *http.Client, req *http.Request) (*http.Response, error) {
+	mediaClient := *client
+	mediaClient.CheckRedirect = func(_ *http.Request, _ []*http.Request) error {
+		return http.ErrUseLastResponse
+	}
+	return mediaClient.Do(req)
+}
+
 func parseARRMissingCount(data arrWantedMissingResponse) int {
 	if data.TotalRecords > 0 {
 		return data.TotalRecords
@@ -426,7 +444,7 @@ func (s plexService) Render(client *http.Client, debug bool) (string, string, bo
 	}
 	req.Header.Set("X-Plex-Token", s.cfg.Token)
 
-	resp, err := client.Do(req)
+	resp, err := doMediaRequest(client, req)
 	if err != nil {
 		display.DebugLog(debug, "Plex request failed for %s: %v", s.cfg.Name, err)
 		return "", "", false
@@ -474,7 +492,7 @@ func (s jellyfinService) Render(client *http.Client, debug bool) (string, string
 	req.Header.Set("X-Emby-Token", s.cfg.Token)
 	req.Header.Set("Authorization", "MediaBrowser Token=\""+s.cfg.Token+"\"")
 
-	resp, err := client.Do(req)
+	resp, err := doMediaRequest(client, req)
 	if err != nil {
 		display.DebugLog(debug, "Jellyfin request failed for %s: %v", s.cfg.Name, err)
 		return "", "", false
@@ -515,7 +533,7 @@ func (s sonarrService) Render(client *http.Client, debug bool) (string, string, 
 	}
 	req.Header.Set("X-Api-Key", s.cfg.APIKey)
 
-	resp, err := client.Do(req)
+	resp, err := doMediaRequest(client, req)
 	if err != nil {
 		display.DebugLog(debug, "Sonarr request failed for %s: %v", s.cfg.Name, err)
 		return "", "", false
@@ -544,7 +562,7 @@ func (s radarrService) Render(client *http.Client, debug bool) (string, string, 
 	}
 	req.Header.Set("X-Api-Key", s.cfg.APIKey)
 
-	resp, err := client.Do(req)
+	resp, err := doMediaRequest(client, req)
 	if err != nil {
 		display.DebugLog(debug, "Radarr request failed for %s: %v", s.cfg.Name, err)
 		return "", "", false
@@ -573,7 +591,7 @@ func (s seerrService) Render(client *http.Client, debug bool) (string, string, b
 	}
 	req.Header.Set("X-Api-Key", s.cfg.APIKey)
 
-	resp, err := client.Do(req)
+	resp, err := doMediaRequest(client, req)
 	if err != nil {
 		display.DebugLog(debug, "Seerr request failed for %s: %v", s.cfg.Name, err)
 		return "", "", false

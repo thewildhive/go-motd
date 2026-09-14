@@ -22,6 +22,9 @@ var (
 const curlTimeout = 5 * time.Second
 
 func main() {
+	if os.Getenv("NO_COLOR") != "" {
+		display.SetColorEnabled(false)
+	}
 	if handleSubcommand() {
 		return
 	}
@@ -121,7 +124,7 @@ func handleSubcommand() bool {
 		update.HandleSelfUpdate(VERSION, client)
 		return true
 	case "configure":
-		handleConfigure()
+		handleConfigure(os.Args[2:])
 		return true
 	case "check-config":
 		handleCheckConfig(os.Args[2:])

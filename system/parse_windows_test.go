@@ -94,6 +94,19 @@ func TestParseWMICDateTime_OutOfRangeDay(t *testing.T) {
 	}
 }
 
+func TestParseWMICDateTime_InvalidCalendarDate(t *testing.T) {
+	if _, ok := parseWMICDateTime("20260230123456.000000+000"); ok {
+		t.Fatal("expected February 30 to fail")
+	}
+}
+
+func TestParseWindowsBootTimeISO(t *testing.T) {
+	parsed, ok := parseWindowsBootTime("2026-04-30T12:34:56.1234567Z")
+	if !ok || parsed.Year() != 2026 || parsed.Month() != time.April || parsed.Day() != 30 {
+		t.Fatalf("unexpected ISO boot time: %s ok=%v", parsed, ok)
+	}
+}
+
 func TestParseWMICDateTime_OutOfRangeHour(t *testing.T) {
 	if _, ok := parseWMICDateTime("20260430243456"); ok {
 		t.Fatal("expected hour 24 to fail")
@@ -120,8 +133,8 @@ func TestParseWindowsCPUPercent(t *testing.T) {
 }
 
 func TestParseWindowsCPUPercentPowerShellOutput(t *testing.T) {
-	percent, ok := parseWindowsCPUPercent([]byte("23\r\n"))
-	if !ok || percent != 23 {
+	percent, ok := parseWindowsCPUPercent([]byte("23.6\r\n"))
+	if !ok || percent != 24 {
 		t.Fatalf("unexpected CPU percent: %d ok=%v", percent, ok)
 	}
 }
@@ -209,6 +222,13 @@ func TestParseWindowsTemperature(t *testing.T) {
 	}
 	if celsius < 30.0 || celsius > 30.1 {
 		t.Fatalf("unexpected celsius value: %.2f", celsius)
+	}
+}
+
+func TestParseWindowsTemperatureWMICValue(t *testing.T) {
+	celsius, ok := parseWindowsTemperature([]byte("CurrentTemperature=3032"))
+	if !ok || celsius < 30.0 || celsius > 30.1 {
+		t.Fatalf("unexpected WMIC temperature: %.2f ok=%v", celsius, ok)
 	}
 }
 

@@ -86,8 +86,9 @@ func PrintHeader() {
 			output, err := cmd.Output()
 			if err == nil && len(output) > 0 {
 				lines := bytes.Split(bytes.TrimRight(output, "\n"), []byte("\n"))
+				colors := rainbowColors()
 				for i, line := range lines {
-					fmt.Printf("%s%s%s\n", rainbowColors[i%len(rainbowColors)], string(line), Reset)
+					fmt.Printf("%s%s%s\n", colors[i%len(colors)], string(line), Reset)
 				}
 				fmt.Println()
 				return
@@ -120,7 +121,9 @@ func PrintSection(title string) {
 	fmt.Printf("\n%s%s━━━ %s ━━━%s\n", Bold, Cyan, title, Reset)
 }
 
-var rainbowColors = []string{Red, Yellow, Green, Cyan, Blue, Magenta}
+func rainbowColors() []string {
+	return []string{Red, Yellow, Green, Cyan, Blue, Magenta}
+}
 
 func hasFiglet() bool {
 	return util.HasCommand("figlet")
