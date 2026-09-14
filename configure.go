@@ -22,17 +22,43 @@ type wizardService struct {
 	Slice             *[]config.ServiceConfig
 }
 
-func handleConfigure() {
-	cfgPath := config.GetConfigPaths()[0]
+func handleConfigure(args []string) {
+	fs := flagSet("configure")
+	requestedPath := fs.String("config", "", "Write config to a specific JSON file")
+	noColor := fs.Bool("no-color", false, "Disable ANSI colors")
+	if err := fs.Parse(args); err != nil {
+		os.Exit(2)
+	}
+	if len(fs.Args()) != 0 {
+		fmt.Fprintf(os.Stderr, "configure: unexpected arguments: %s\n", strings.Join(fs.Args(), " "))
+		os.Exit(2)
+	}
+	if *noColor {
+		display.SetColorEnabled(false)
+	}
+
+	cfgPath := *requestedPath
+	if cfgPath == "" {
+		cfgPath = config.GetConfigPaths()[0]
+	}
 	reader := bufio.NewReader(os.Stdin)
 
 	// Determine if config exists on disk
 	configExists := false
-	for _, p := range config.GetConfigPaths() {
-		if _, err := os.Stat(p); err == nil {
-			cfgPath = p
-			configExists = true
-			break
+	if *requestedPath != "" {
+		_, err := os.Stat(cfgPath)
+		configExists = err == nil
+		if err != nil && !os.IsNotExist(err) {
+			fmt.Fprintf(os.Stderr, "Error checking configuration: %v\n", err)
+			os.Exit(1)
+		}
+	} else {
+		for _, p := range config.GetConfigPaths() {
+			if _, err := os.Stat(p); err == nil {
+				cfgPath = p
+				configExists = true
+				break
+			}
 		}
 	}
 
@@ -44,14 +70,21 @@ func handleConfigure() {
 		os.Exit(1)
 	}
 
-	// Load existing config or start fresh
-	cfg, err := config.Load("", false, func(string, ...interface{}) {})
+	// Load existing config without replacing malformed input with defaults.
+	cfg := config.Config{}
+	var err error
+	if configExists {
+		cfg, err = config.Load(cfgPath, false, func(string, ...interface{}) {})
+	} else if *requestedPath == "" {
+		cfg, err = config.Load("", false, func(string, ...interface{}) {})
+	}
 	if err != nil {
 		if legacyErr, ok := err.(*config.LegacyConfigError); ok {
 			config.PrintLegacyConfigError(legacyErr)
-			os.Exit(1)
+		} else {
+			fmt.Fprintf(os.Stderr, "Error loading configuration: %v\n", err)
 		}
-		cfg = config.Config{}
+		os.Exit(1)
 	}
 
 	if configExists {
