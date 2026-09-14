@@ -76,6 +76,11 @@ func TestSetColorEnabled(t *testing.T) {
 	if Red != "" || Green != "" || Reset != "" {
 		t.Fatal("expected colors to be disabled")
 	}
+	for _, color := range rainbowColors() {
+		if color != "" {
+			t.Fatal("expected rainbow colors to be disabled")
+		}
+	}
 	SetColorEnabled(true)
 	if Red == "" || Green == "" || Reset == "" {
 		t.Fatal("expected colors to be restored")
