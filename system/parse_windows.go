@@ -5,6 +5,7 @@ package system
 import (
 	"bytes"
 	"encoding/csv"
+	"math"
 	"strconv"
 	"strings"
 	"time"
@@ -161,11 +162,22 @@ func parseWMICDateTime(value string) (time.Time, bool) {
 		return time.Time{}, false
 	}
 
-	return time.Date(year, time.Month(month), day, hour, min, sec, 0, time.Local), true
+	parsed := time.Date(year, time.Month(month), day, hour, min, sec, 0, time.Local)
+	if parsed.Year() != year || parsed.Month() != time.Month(month) || parsed.Day() != day {
+		return time.Time{}, false
+	}
+	return parsed, true
+}
+
+func parseWindowsBootTime(value string) (time.Time, bool) {
+	if parsed, err := time.Parse(time.RFC3339Nano, strings.TrimSpace(value)); err == nil {
+		return parsed, true
+	}
+	return parseWMICDateTime(value)
 }
 
 func parseWindowsCPUPercent(output []byte) (int, bool) {
-	values := make([]int, 0)
+	values := make([]float64, 0)
 	for _, line := range strings.Split(string(output), "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" {
@@ -178,19 +190,19 @@ func parseWindowsCPUPercent(output []byte) (int, bool) {
 			}
 			line = strings.TrimSpace(value)
 		}
-		parsed, err := strconv.Atoi(line)
-		if err == nil {
+		parsed, err := strconv.ParseFloat(line, 64)
+		if err == nil && parsed >= 0 && parsed <= 100 {
 			values = append(values, parsed)
 		}
 	}
 	if len(values) == 0 {
 		return 0, false
 	}
-	total := 0
+	total := 0.0
 	for _, value := range values {
 		total += value
 	}
-	return total / len(values), true
+	return int(math.Round(total / float64(len(values)))), true
 }
 
 func parseWindowsIntOutput(output []byte) (int, bool) {
@@ -304,7 +316,7 @@ func parseWindowsTemperature(output []byte) (float64, bool) {
 
 	for _, line := range strings.Split(text, "\n") {
 		line = strings.TrimSpace(line)
-		if line == "" || strings.Contains(line, "CurrentTemperature") {
+		if line == "" || line == "CurrentTemperature" {
 			continue
 		}
 		if strings.HasPrefix(line, "CurrentTemperature=") {

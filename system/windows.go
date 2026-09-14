@@ -66,11 +66,11 @@ func ShowUptime(cfg ConfigAccessor, debug bool) {
 }
 
 func getWindowsBootTime() (time.Time, bool) {
-	cmd, cmdErr := util.SafeCommand("powershell", "-NoProfile", "-Command", "(Get-CimInstance Win32_OperatingSystem).LastBootUpTime")
+	cmd, cmdErr := util.SafeCommand("powershell", "-NoProfile", "-Command", "(Get-CimInstance Win32_OperatingSystem).LastBootUpTime.ToUniversalTime().ToString('o', [Globalization.CultureInfo]::InvariantCulture)")
 	if cmdErr == nil {
 		output, err := cmd.Output()
 		if err == nil {
-			if t, ok := parseWMICDateTime(strings.TrimSpace(string(output))); ok {
+			if t, ok := parseWindowsBootTime(strings.TrimSpace(string(output))); ok {
 				return t, true
 			}
 		}
@@ -224,7 +224,7 @@ func ShowDisk(cfg ConfigAccessor, debug bool) {
 }
 
 func getWindowsDiskInfo() ([]windowsDiskInfo, bool) {
-	cmd, cmdErr := util.SafeCommand("powershell", "-NoProfile", "-Command", "Get-CimInstance Win32_LogicalDisk -Filter 'DriveType=3' | Select-Object DeviceID,Size,FreeSpace | Format-Csv -NoHeader")
+	cmd, cmdErr := util.SafeCommand("powershell", "-NoProfile", "-Command", "Get-CimInstance Win32_LogicalDisk -Filter 'DriveType=3' | Select-Object DeviceID,Size,FreeSpace | ConvertTo-Csv -NoTypeInformation")
 	if cmdErr == nil {
 		output, err := cmd.Output()
 		if err == nil {
@@ -232,7 +232,7 @@ func getWindowsDiskInfo() ([]windowsDiskInfo, bool) {
 		}
 	}
 
-	cmd, cmdErr = util.SafeCommand("wmic", "logicaldisk", "where", "drivetype=3", "get", "DeviceID,Size,FreeSpace", "/format:csv")
+	cmd, cmdErr = util.SafeCommand("wmic", "logicaldisk", "where", "drivetype=3", "get", "DeviceID,Size,FreeSpace", "/value")
 	if cmdErr != nil {
 		return nil, false
 	}
@@ -249,10 +249,6 @@ func getDefaultInterface() string {
 }
 
 func ShowTemp(cfg ConfigAccessor, debug bool) {
-	if !util.HasCommand("powershell") {
-		return
-	}
-
 	cmd, cmdErr := util.SafeCommand("powershell", "-NoProfile", "-Command", "Get-CimInstance MSAcpi_ThermalZoneTemperature -Namespace 'root/wmi' | Select-Object -ExpandProperty CurrentTemperature")
 	if cmdErr == nil {
 		output, err := cmd.Output()
