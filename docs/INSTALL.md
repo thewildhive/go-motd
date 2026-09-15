@@ -35,9 +35,10 @@ working. It refuses custom symlinks, unrecognized executables, and foreign
 package-owned files. Omit `--migrate` to leave `/usr/local/bin` unchanged. Custom
 install locations need manual migration; inspect `type -a motd` first.
 
-**There is no APT repository yet.** `apt upgrade` does not discover new go-motd
-releases. Repeat the helper with the desired release version, or verify and install
-a downloaded package with `sudo apt install ./go-motd_VERSION-1_ARCH.deb`.
+For ongoing updates, configure the [APT repository](#apt-repository) once it is
+activated. Without that source, `apt upgrade` cannot discover go-motd releases.
+You can still repeat the helper with the desired version or install a verified
+download with `sudo apt install ./go-motd_VERSION-1_ARCH.deb`.
 Debian builds disable `self-update` (including `--force`) and GitHub update checks.
 Standalone archives retain their existing updater.
 
@@ -47,6 +48,57 @@ If you migrated, also remove the compatibility symlink with
 For rollback to the standalone install, remove the package and restore the
 backup path printed by the helper to `/usr/local/bin/motd` using `sudo mv -T`.
 Do not delete your config directories as part of a package migration or rollback.
+
+## APT Repository
+
+After the maintainer completes [Pages activation](APT-REPOSITORY.md), the default
+repository URL is `https://thewildhive.github.io/go-motd/`. Do not run the setup
+until the first deployment succeeds and the maintainer supplies the signing-key
+fingerprint through a trusted channel. The repository hosts amd64 and arm64
+packages in suite `stable`, component `main`; it does not replace Debian/Ubuntu
+system repositories.
+
+Run this in Bash, replacing the fingerprint placeholder with that trusted value.
+Requires curl and GnuPG. It downloads the public key, verifies its fingerprint,
+and installs a repository-scoped keyring rather than trusting it globally:
+
+```bash
+(
+  set -eu
+  expected='REPLACE_WITH_TRUSTED_40_CHARACTER_FINGERPRINT'
+  base=https://thewildhive.github.io/go-motd
+  work=$(mktemp -d)
+  trap 'rm -rf "$work"' EXIT
+  curl -fLSs "$base/go-motd-archive-keyring.gpg" -o "$work/key.gpg"
+  actual=$(gpg --batch --show-keys --with-colons "$work/key.gpg" |
+    awk -F: '$1 == "fpr" {print $10; exit}')
+  test "$actual" = "$expected"
+  sudo install -d -m 0755 /etc/apt/keyrings
+  sudo install -m 0644 "$work/key.gpg" /etc/apt/keyrings/go-motd.gpg
+  printf '%s\n' \
+    'Types: deb' "URIs: $base/" 'Suites: stable' 'Components: main' \
+    "Architectures: $(dpkg --print-architecture)" \
+    'Signed-By: /etc/apt/keyrings/go-motd.gpg' > "$work/go-motd.sources"
+  sudo install -m 0644 "$work/go-motd.sources" /etc/apt/sources.list.d/go-motd.sources
+  sudo apt update
+  sudo apt install go-motd
+)
+```
+
+If v3.0.0 is already installed, no second migration is needed. Its old
+`self-update` message predates repository support; continue using APT instead.
+On later releases, use `sudo apt update && sudo apt install --only-upgrade go-motd`
+or your normal `apt upgrade`. Automatic unattended upgrades require separately
+allowing origin `go-motd` in unattended-upgrades settings.
+
+Metadata expires after 30 days and is refreshed weekly. If APT reports expired
+metadata, the maintainer must restore publication; do not disable signature or
+expiry verification. During Pages/CDN propagation an index checksum mismatch can
+temporarily occur: retry `apt update` later, without disabling verification.
+
+To remove only the repository, delete `/etc/apt/sources.list.d/go-motd.sources`
+and `/etc/apt/keyrings/go-motd.gpg`, then run `sudo apt update`. This leaves the
+installed package and configuration intact.
 
 ## Quick Install
 

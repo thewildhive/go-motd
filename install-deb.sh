@@ -67,7 +67,7 @@ if [[ "$migrate" == --migrate && -f "$old" && ! -L "$old" ]]; then
   echo "Replaced $old with a compatibility symlink; rollback binary: $backup"
 fi
 echo "Installed go-motd ${version}-1 ($arch). Configuration was not changed."
-echo "No APT repository is configured yet. Install future signed .deb releases with this helper."
+echo "This helper does not configure APT sources. For repository setup, see https://github.com/thewildhive/go-motd/blob/main/docs/INSTALL.md#apt-repository"
 if [[ -e "$old" && ! -L "$old" ]]; then
   echo "Warning: $old may shadow /usr/bin/motd. Re-run with --migrate to migrate this path."
 fi

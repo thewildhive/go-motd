@@ -124,7 +124,7 @@ func handleSubcommand() bool {
 	switch os.Args[1] {
 	case "self-update":
 		if DISTRIBUTION == "deb" {
-			fmt.Fprintln(os.Stderr, "This binary is managed by dpkg. Install a verified release package with: sudo apt install ./go-motd_VERSION_ARCH.deb (no APT repository is configured).")
+			fmt.Fprintln(os.Stderr, "This binary is managed by dpkg. After configuring the go-motd APT repository, run: sudo apt update && sudo apt install --only-upgrade go-motd. Alternatively, install a verified release .deb package.")
 			os.Exit(1)
 		}
 		client := &http.Client{Timeout: curlTimeout}
