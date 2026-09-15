@@ -4,6 +4,9 @@ This guide covers installing and configuring `motd`.
 
 ## Debian and Ubuntu (v3+)
 
+For migration through APT, including cleanup of the old standalone binary without
+a backup, follow [Migrate to Debian packages](../Migrate.md).
+
 Releases include `go-motd_VERSION-1_amd64.deb` and `go-motd_VERSION-1_arm64.deb`.
 These are statically linked, architecture-specific packages, not co-installable
 Multi-Arch packages. The package installs `/usr/bin/motd`, a license, and a sample
