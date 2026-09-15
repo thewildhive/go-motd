@@ -17,6 +17,8 @@ expected=(
   archive-checksums.txt.sig
   checksums.txt
   checksums.txt.sig
+  "go-motd_${version}-1_amd64.deb"
+  "go-motd_${version}-1_arm64.deb"
   "motd-${version}-darwin-amd64.tar.gz"
   "motd-${version}-darwin-arm64.tar.gz"
   "motd-${version}-linux-amd64.tar.gz"

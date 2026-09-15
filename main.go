@@ -15,8 +15,9 @@ import (
 )
 
 var (
-	VERSION   = "dev"
-	BUILDDATE = "unknown"
+	VERSION      = "dev"
+	BUILDDATE    = "unknown"
+	DISTRIBUTION = "standalone"
 )
 
 const curlTimeout = 5 * time.Second
@@ -93,8 +94,10 @@ func main() {
 
 	display.PrintHeader()
 
-	if msg := update.CheckUpdate(VERSION, client); msg != "" {
-		fmt.Printf("%s⚠ %s%s\n\n", display.Yellow, msg, display.Reset)
+	if DISTRIBUTION == "standalone" {
+		if msg := update.CheckUpdate(VERSION, client); msg != "" {
+			fmt.Printf("%s⚠ %s%s\n\n", display.Yellow, msg, display.Reset)
+		}
 	}
 
 	display.PrintSection("System Information")
@@ -120,6 +123,10 @@ func handleSubcommand() bool {
 	}
 	switch os.Args[1] {
 	case "self-update":
+		if DISTRIBUTION == "deb" {
+			fmt.Fprintln(os.Stderr, "This binary is managed by dpkg. Install a verified release package with: sudo apt install ./go-motd_VERSION_ARCH.deb (no APT repository is configured).")
+			os.Exit(1)
+		}
 		client := &http.Client{Timeout: curlTimeout}
 		update.HandleSelfUpdate(VERSION, client)
 		return true
@@ -157,7 +164,7 @@ Options:
   -services LIST  Only show selected media services (comma-separated)
 
 Commands:
-  self-update     Update to the latest version from GitHub releases
+  self-update     Update standalone builds from GitHub (disabled in Debian packages)
   configure       Create or edit the config file
   check-config    Validate configuration and print diagnostics
 

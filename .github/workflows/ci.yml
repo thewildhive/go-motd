@@ -47,7 +47,8 @@ jobs:
       - name: Validate workflow syntax
         run: go run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
       - name: Check release scripts
-        run: bash -n .github/scripts/*.sh
+        run: |
+          for script in .github/scripts/*.sh install-deb.sh; do bash -n "$script" || exit; done
       - name: Validate conventional PR title
         if: github.event_name == 'pull_request'
         env:
@@ -114,6 +115,27 @@ jobs:
         shell: bash
         run: GOOS=${{ matrix.os }} GOARCH=${{ matrix.arch }} go build -buildvcs=false ./...
 
+  debian:
+    name: Debian (${{ matrix.runner }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04, ubuntu-24.04-arm]
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Test native Debian package lifecycle
+        run: bash .github/scripts/test-deb.sh
+      - name: Test signed installer migration in isolation
+        run: bash .github/scripts/test-deb-installer.sh
+
   vulnerabilities:
     name: Vulnerabilities
     runs-on: ubuntu-latest
@@ -147,7 +169,7 @@ jobs:
   required:
     name: Required
     if: always()
-    needs: [quality, tests, builds, vulnerabilities, dependency-review]
+    needs: [quality, tests, builds, debian, vulnerabilities, dependency-review]
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:

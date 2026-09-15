@@ -2,6 +2,52 @@
 
 This guide covers installing and configuring `motd`.
 
+## Debian and Ubuntu (v3+)
+
+Releases include `go-motd_VERSION-1_amd64.deb` and `go-motd_VERSION-1_arm64.deb`.
+These are statically linked, architecture-specific packages, not co-installable
+Multi-Arch packages. The package installs `/usr/bin/motd`, a license, and a sample
+config under `/usr/share/doc/go-motd/`. It does not change your config or login hooks.
+
+Install v3.0.0, migrating the default standalone binary if present:
+
+```bash
+(
+  set -eu
+  installer=$(mktemp)
+  trap 'rm -f "$installer"' EXIT
+  curl -fLSs https://raw.githubusercontent.com/thewildhive/go-motd/v3.0.0/install-deb.sh -o "$installer"
+  bash "$installer" 3.0.0 --migrate
+)
+hash -r
+motd -v
+```
+
+Requires Bash, curl, OpenSSL with Ed25519 support, and apt/dpkg. Run as your normal
+user; the helper uses sudo for installation. Review the downloaded script before
+executing it if desired. It verifies the package against the release's signed
+`archive-checksums.txt` using the embedded release public key before calling APT.
+
+With `--migrate`, after a successful package installation the helper backs up the
+old `/usr/local/bin/motd` to a uniquely named `motd.pre-deb.*` file, then replaces
+the original with a symlink to `/usr/bin/motd`. Explicit login-hook paths keep
+working. It refuses custom symlinks, unrecognized executables, and foreign
+package-owned files. Omit `--migrate` to leave `/usr/local/bin` unchanged. Custom
+install locations need manual migration; inspect `type -a motd` first.
+
+**There is no APT repository yet.** `apt upgrade` does not discover new go-motd
+releases. Repeat the helper with the desired release version, or verify and install
+a downloaded package with `sudo apt install ./go-motd_VERSION-1_ARCH.deb`.
+Debian builds disable `self-update` (including `--force`) and GitHub update checks.
+Standalone archives retain their existing updater.
+
+Remove the package with `sudo apt remove go-motd`; user config remains intact.
+If you migrated, also remove the compatibility symlink with
+`sudo rm /usr/local/bin/motd` after checking it still points to `/usr/bin/motd`.
+For rollback to the standalone install, remove the package and restore the
+backup path printed by the helper to `/usr/local/bin/motd` using `sudo mv -T`.
+Do not delete your config directories as part of a package migration or rollback.
+
 ## Quick Install
 
 The commands below download the latest release binary for your platform, verify its SHA256 checksum, and install — one block to copy and paste. The raw binaries are listed in `checksums.txt` and are used directly (no archive extraction needed).
