@@ -1,6 +1,17 @@
 ## [v2.0.0] - 2026-07-06
 
 
+## [3.0.0](https://github.com/thewildhive/go-motd/compare/v2.2.1...v3.0.0) (2026-09-15)
+
+
+### ⚠ BREAKING CHANGES
+
+* **distribution:** ship Debian packages for v3
+
+### Features
+
+* **distribution:** ship Debian packages for v3 ([9630992](https://github.com/thewildhive/go-motd/commit/9630992c7e7e49560188f366ddf618268136985e))
+
 ## [2.2.1](https://github.com/thewildhive/go-motd/compare/v2.2.0...v2.2.1) (2026-09-14)
 
 
