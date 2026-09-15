@@ -41,6 +41,9 @@ build darwin amd64
 build darwin arm64
 build windows amd64
 
+bash .github/scripts/package-deb.sh "$version" amd64 "$output_dir"
+bash .github/scripts/package-deb.sh "$version" arm64 "$output_dir"
+
 touch -d "@$source_date_epoch" \
   "$output_dir/motd-linux-amd64" \
   "$output_dir/motd-linux-arm64" \
@@ -63,7 +66,7 @@ touch -d "@$source_date_epoch" \
   tar "${tar_flags[@]}" -czf "motd-${version}-darwin-amd64.tar.gz" motd-darwin-amd64
   tar "${tar_flags[@]}" -czf "motd-${version}-darwin-arm64.tar.gz" motd-darwin-arm64
   TZ=UTC python3 -m zipfile -c "motd-${version}-windows-amd64.zip" motd-windows-amd64.exe
-  sha256sum *.tar.gz *.zip > archive-checksums.txt
+  sha256sum *.tar.gz *.zip *.deb > archive-checksums.txt
 )
 
 if [[ -z "${SIGNING_KEY_FILE:-}" || ! -s "$SIGNING_KEY_FILE" ]]; then
@@ -79,7 +82,7 @@ openssl pkeyutl -sign -inkey "$SIGNING_KEY_FILE" -rawin -in "$output_dir/archive
   sha256sum --check checksums.txt
   sha256sum --check archive-checksums.txt
   [[ "$(wc -l < checksums.txt)" -eq 5 ]]
-  [[ "$(wc -l < archive-checksums.txt)" -eq 5 ]]
+  [[ "$(wc -l < archive-checksums.txt)" -eq 7 ]]
   [[ "$(wc -c < checksums.txt.sig)" -eq 64 ]]
   [[ "$(wc -c < archive-checksums.txt.sig)" -eq 64 ]]
 

@@ -55,6 +55,8 @@ check: cache-dirs
 	GOOS=darwin GOARCH=amd64 $(GO) build $(GO_BUILD_FLAGS) ./...
 	GOOS=darwin GOARCH=arm64 $(GO) build $(GO_BUILD_FLAGS) ./...
 	GOOS=windows GOARCH=amd64 $(GO) build $(GO_BUILD_FLAGS) ./...
+	@echo "Testing Debian package lifecycle..."
+	bash .github/scripts/test-deb.sh
 	@echo "Running native vulnerability analysis..."
 	$(GO) build $(GO_BUILD_FLAGS) -o /tmp/motd-vulncheck .
 	$(GO) run golang.org/x/vuln/cmd/govulncheck@v1.6.0 -mode=binary /tmp/motd-vulncheck
@@ -66,7 +68,7 @@ check-all: check
 
 check-workflows: cache-dirs
 	$(GO) run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
-	bash -n .github/scripts/*.sh install.sh
+	@for script in .github/scripts/*.sh install.sh install-deb.sh; do bash -n "$$script" || exit; done
 
 smoke: build-optimized
 	./$(BIN_DIR)/$(BINARY_NAME) -h

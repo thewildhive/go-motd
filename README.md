@@ -10,8 +10,15 @@ Status: maintained. The latest release is the supported version; the CLI, JSON c
 - Built-in HTTP client with timeouts and connection reuse
 - System information on Linux, macOS, and Windows with platform-specific fallbacks
 - Optional multi-instance media service support (Plex, Jellyfin, Sonarr, Radarr, Seerr)
-- Self-update command with checksum verification
+- Debian packages for amd64 and arm64; standalone builds retain signed self-update
 - Cross-platform builds for Linux, macOS, and Windows
+
+## Debian and Ubuntu Installation
+
+Starting with v3, use the signed `.deb` release packages to let dpkg own the binary.
+See the [installation and migration commands](docs/INSTALL.md#debian-and-ubuntu-v3).
+Existing configuration is preserved. Debian builds disable binary self-update;
+an APT repository for automatic package discovery is not provided yet.
 
 ## Build
 
