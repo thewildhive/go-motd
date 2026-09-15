@@ -1,6 +1,13 @@
 ## [v2.0.0] - 2026-07-06
 
 
+## [3.1.0](https://github.com/thewildhive/go-motd/compare/v3.0.0...v3.1.0) (2026-09-15)
+
+
+### Features
+
+* **distribution:** publish signed APT repository on GitHub Pages ([#66](https://github.com/thewildhive/go-motd/issues/66)) ([2db1130](https://github.com/thewildhive/go-motd/commit/2db1130306590ed1ceb2c0095b06e26c553c0809))
+
 ## [3.0.0](https://github.com/thewildhive/go-motd/compare/v2.2.1...v3.0.0) (2026-09-15)
 
 
