@@ -16,7 +16,9 @@ Status: maintained. The latest release is the supported version; the CLI, JSON c
 ## Debian and Ubuntu Installation
 
 Starting with v3, use the signed `.deb` release packages to let dpkg own the binary.
-See the [installation and migration commands](docs/INSTALL.md#debian-and-ubuntu-v3).
+Follow the [APT installation guide](INSTALL.md) for installation and updates.
+For an existing standalone installation, follow [Migrate to Debian packages](Migrate.md)
+to remove the old binary without making a backup.
 Existing configuration is preserved. Debian builds disable binary self-update;
 configure the [signed APT repository](docs/INSTALL.md#apt-repository) for ongoing
 package updates after its first deployment.
