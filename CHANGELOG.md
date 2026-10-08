@@ -1,6 +1,13 @@
 ## [v2.0.0] - 2026-07-06
 
 
+## [3.1.1](https://github.com/thewildhive/go-motd/compare/v3.1.0...v3.1.1) (2026-10-08)
+
+
+### Build System
+
+* update compiler to Go 1.27.1 ([#71](https://github.com/thewildhive/go-motd/issues/71)) ([22489bc](https://github.com/thewildhive/go-motd/commit/22489bcb29d4674a2d0f74a366ea8cf07125dce7))
+
 ## [3.1.0](https://github.com/thewildhive/go-motd/compare/v3.0.0...v3.1.0) (2026-09-15)
 
 
