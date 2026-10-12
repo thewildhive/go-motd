@@ -1,6 +1,13 @@
 ## [v2.0.0] - 2026-07-06
 
 
+## [3.1.2](https://github.com/thewildhive/go-motd/compare/v3.1.1...v3.1.2) (2026-10-12)
+
+
+### Build System
+
+* **toolchain:** manage current Go and validation tools with mise ([#73](https://github.com/thewildhive/go-motd/issues/73)) ([3546e71](https://github.com/thewildhive/go-motd/commit/3546e7195d0cf68856c3d14226c855fbd6a1d695))
+
 ## [3.1.1](https://github.com/thewildhive/go-motd/compare/v3.1.0...v3.1.1) (2026-10-08)
 
 
