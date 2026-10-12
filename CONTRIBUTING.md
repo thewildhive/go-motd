@@ -64,13 +64,43 @@ Automation never pushes directly to `main`; release metadata is merged through t
 
 ## Testing
 
+Install [mise](https://mise.jdx.dev/getting-started.html), then prepare the pinned
+toolchain from the repository root:
+
+```bash
+mise trust mise.toml
+mise install
+```
+
+`mise.toml` pins Go, govulncheck, actionlint, and ShellCheck. The Go version in
+`go.mod` must match the mise pin. `GOTOOLCHAIN=local` prevents Go from silently
+downloading a different compiler. Make targets run these tools through mise;
+use `mise exec --` for direct commands such as `mise exec -- go vet ./...`.
+
 Before submitting a PR, run the authoritative local gate:
 
 ```bash
-make check
+mise run check
 ```
 
 This covers formatting, module consistency, vet, deterministic and race tests, all five release build targets, native vulnerability analysis, and workflow syntax. CI additionally validates internal Markdown links and dependency changes.
+
+## Toolchain Updates
+
+`renovate.json` enables Renovate's built-in mise manager and the Go version
+directive in `go.mod`. Go updates change both pins in one `build(toolchain)` PR;
+other mise tool updates use `chore(tools)` and do not trigger releases. Updates
+require review and passing checks; automerge is disabled. Dependabot continues
+to manage Go module dependencies and GitHub Actions.
+
+Enable the [Mend Renovate GitHub App](https://github.com/apps/renovate) for this
+repository after merging the config, or include it in an existing self-hosted
+Renovate installation. The config alone does not start a bot. Review the
+Dependency Dashboard and the first update PR to confirm that all four tools
+are detected and both Go pins change together.
+
+The planned CI migration is documented in
+[`specs/mise-ci/TECH.md`](specs/mise-ci/TECH.md).
 
 ## Release recovery and rollback
 

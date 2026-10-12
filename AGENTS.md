@@ -2,6 +2,9 @@
 
 ## Build Commands
 
+Prepare the pins with `mise trust mise.toml` and `mise install`. Make targets
+invoke managed tools; prefix direct toolchain commands with `mise exec --`.
+
 - `make build` - Build regular binary to `bin/motd`
 - `make build-optimized` - Build optimized binary with `-ldflags="-s -w"`
 - `make test` - Run `go test ./...`

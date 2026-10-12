@@ -232,24 +232,33 @@ Publication is recoverable without moving the tag: manually dispatch `Publish Re
 
 ## Development Checks
 
+Install [mise](https://mise.jdx.dev/getting-started.html) and prepare the pinned
+development tools before building or checking the repository:
+
 ```bash
-make check
+mise trust mise.toml
+mise install
+mise run check
 ```
+
+`mise run build`, `mise run test`, and `mise run smoke` wrap the Make targets.
+Make also invokes toolchain commands through mise. See
+[CONTRIBUTING.md](CONTRIBUTING.md#toolchain-updates) for Renovate setup and updates.
 
 ## Cross-Compilation
 
 ```bash
-make cross-compile
-make package VERSION=X.Y.Z SIGNING_KEY_FILE=/path/to/ed25519-private-key.pem
+mise run cross-compile
+mise exec -- make package VERSION=X.Y.Z SIGNING_KEY_FILE=/path/to/ed25519-private-key.pem
 ```
 
 Manual examples:
 
 ```bash
 VERSION=dev
-GOOS=linux GOARCH=amd64 go build -buildvcs=false -ldflags="-s -w -X main.VERSION=${VERSION}" -o bin/motd-linux-amd64 .
-GOOS=linux GOARCH=arm64 go build -buildvcs=false -ldflags="-s -w -X main.VERSION=${VERSION}" -o bin/motd-linux-arm64 .
-GOOS=darwin GOARCH=amd64 go build -buildvcs=false -ldflags="-s -w -X main.VERSION=${VERSION}" -o bin/motd-darwin-amd64 .
-GOOS=darwin GOARCH=arm64 go build -buildvcs=false -ldflags="-s -w -X main.VERSION=${VERSION}" -o bin/motd-darwin-arm64 .
-GOOS=windows GOARCH=amd64 go build -buildvcs=false -ldflags="-s -w -X main.VERSION=${VERSION}" -o bin/motd-windows-amd64.exe .
+GOOS=linux GOARCH=amd64 mise exec -- go build -buildvcs=false -ldflags="-s -w -X main.VERSION=${VERSION}" -o bin/motd-linux-amd64 .
+GOOS=linux GOARCH=arm64 mise exec -- go build -buildvcs=false -ldflags="-s -w -X main.VERSION=${VERSION}" -o bin/motd-linux-arm64 .
+GOOS=darwin GOARCH=amd64 mise exec -- go build -buildvcs=false -ldflags="-s -w -X main.VERSION=${VERSION}" -o bin/motd-darwin-amd64 .
+GOOS=darwin GOARCH=arm64 mise exec -- go build -buildvcs=false -ldflags="-s -w -X main.VERSION=${VERSION}" -o bin/motd-darwin-arm64 .
+GOOS=windows GOARCH=amd64 mise exec -- go build -buildvcs=false -ldflags="-s -w -X main.VERSION=${VERSION}" -o bin/motd-windows-amd64.exe .
 ```
