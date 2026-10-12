@@ -2,10 +2,11 @@
 
 BINARY_NAME := motd
 BIN_DIR := bin
-GO := go
+GO := mise exec -- go
 GOCACHE ?= $(CURDIR)/.cache/go-build
 GOTMPDIR ?= $(CURDIR)/.cache/go-tmp
 export GOCACHE GOTMPDIR
+export GOTOOLCHAIN := local
 VERSION ?= dev
 BUILDDATE ?= $(shell date -u +%d%m%y)
 GO_BUILD_FLAGS := -buildvcs=false
@@ -34,12 +35,12 @@ test: cache-dirs
 	$(GO) test -count=1 ./...
 
 test-status-agent-integration:
-	bash scripts/test-status-agent-integration.sh
+	mise exec -- bash scripts/test-status-agent-integration.sh
 
 # Authoritative local gate. This intentionally includes every published target.
 check: cache-dirs
 	@echo "Checking formatting..."
-	@files="$$(gofmt -l .)"; test -z "$$files" || { echo "$$files"; echo "Run: gofmt -w ."; exit 1; }
+	@files="$$(mise exec -- gofmt -l .)" || exit 1; test -z "$$files" || { echo "$$files"; echo "Run: mise exec -- gofmt -w ."; exit 1; }
 	@echo "Checking module consistency..."
 	@before="$$(sha256sum go.mod go.sum)"; $(GO) mod tidy; after="$$(sha256sum go.mod go.sum)"; \
 		test "$$before" = "$$after" || { echo "go mod tidy changed go.mod or go.sum"; exit 1; }
@@ -56,10 +57,10 @@ check: cache-dirs
 	GOOS=darwin GOARCH=arm64 $(GO) build $(GO_BUILD_FLAGS) ./...
 	GOOS=windows GOARCH=amd64 $(GO) build $(GO_BUILD_FLAGS) ./...
 	@echo "Testing Debian package lifecycle..."
-	bash .github/scripts/test-deb.sh
+	mise exec -- bash .github/scripts/test-deb.sh
 	@echo "Running native vulnerability analysis..."
 	$(GO) build $(GO_BUILD_FLAGS) -o /tmp/motd-vulncheck .
-	$(GO) run golang.org/x/vuln/cmd/govulncheck@v1.6.0 -mode=binary /tmp/motd-vulncheck
+	mise exec -- govulncheck -mode=binary /tmp/motd-vulncheck
 	@$(MAKE) check-workflows
 	@echo "All checks passed."
 
@@ -67,7 +68,7 @@ check: cache-dirs
 check-all: check
 
 check-workflows: cache-dirs
-	$(GO) run github.com/rhysd/actionlint/cmd/actionlint@v1.7.12
+	mise exec -- actionlint
 	@for script in .github/scripts/*.sh install.sh install-deb.sh; do bash -n "$$script" || exit; done
 
 smoke: build-optimized
@@ -91,7 +92,7 @@ cross-compile: cache-dirs
 
 # SIGNING_KEY_FILE must point to the Ed25519 private key used for this build.
 package: clean cache-dirs
-	SIGNING_KEY_FILE="$(SIGNING_KEY_FILE)" .github/scripts/package-release.sh "$(VERSION)" $(BIN_DIR)/release
+	SIGNING_KEY_FILE="$(SIGNING_KEY_FILE)" mise exec -- .github/scripts/package-release.sh "$(VERSION)" $(BIN_DIR)/release
 
 release: package
 

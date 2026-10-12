@@ -1,0 +1,29 @@
+[tools]
+go = "1.27.2"
+"go:golang.org/x/vuln/cmd/govulncheck" = "1.9.0"
+"aqua:rhysd/actionlint" = "1.7.12"
+shellcheck = "0.11.0"
+
+[env]
+# Fail on version mismatches instead of downloading a different Go toolchain.
+GOTOOLCHAIN = "local"
+
+[tasks.build]
+description = "Build bin/motd"
+run = "make build"
+
+[tasks.test]
+description = "Run Go tests"
+run = "make test"
+
+[tasks.check]
+description = "Run the authoritative local gate"
+run = "make check"
+
+[tasks.smoke]
+description = "Build and check CLI help/version"
+run = "make smoke"
+
+[tasks.cross-compile]
+description = "Build all five release targets"
+run = "make cross-compile"

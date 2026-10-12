@@ -1,0 +1,38 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended"],
+  "enabledManagers": ["mise", "gomod"],
+  "automerge": false,
+  "semanticCommits": "enabled",
+  "packageRules": [
+    {
+      "description": "Dependabot retains ownership of Go module dependencies.",
+      "matchManagers": ["gomod"],
+      "enabled": false
+    },
+    {
+      "description": "Keep the Go minimum version aligned with the mise compiler pin.",
+      "matchManagers": ["gomod"],
+      "matchDepNames": ["go"],
+      "matchDepTypes": ["golang"],
+      "enabled": true,
+      "rangeStrategy": "bump"
+    },
+    {
+      "description": "Update the compiler and go.mod together; compiler changes trigger releases.",
+      "matchManagers": ["mise", "gomod"],
+      "matchDepNames": ["go"],
+      "groupName": "Go toolchain",
+      "groupSlug": "go-toolchain",
+      "semanticCommitType": "build",
+      "semanticCommitScope": "toolchain"
+    },
+    {
+      "description": "Validation-tool updates do not change the release binary.",
+      "matchManagers": ["mise"],
+      "matchDepNames": ["!go"],
+      "semanticCommitType": "chore",
+      "semanticCommitScope": "tools"
+    }
+  ]
+}
