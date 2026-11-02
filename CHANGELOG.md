@@ -1,6 +1,15 @@
 ## [v2.0.0] - 2026-07-06
 
 
+## [3.1.2](https://github.com/thewildhive/go-motd/compare/v3.1.1...v3.1.2) (2026-11-02)
+
+
+### Build System
+
+* add Dependabot cooldown ([#78](https://github.com/thewildhive/go-motd/issues/78)) ([9e38ef7](https://github.com/thewildhive/go-motd/commit/9e38ef73f2c661c92ff0fac7a2544ec27f10c088))
+* **toolchain:** manage current Go and validation tools with mise ([#73](https://github.com/thewildhive/go-motd/issues/73)) ([3546e71](https://github.com/thewildhive/go-motd/commit/3546e7195d0cf68856c3d14226c855fbd6a1d695))
+* **toolchain:** update dependency go to v1.27.3 ([#77](https://github.com/thewildhive/go-motd/issues/77)) ([2c40703](https://github.com/thewildhive/go-motd/commit/2c40703825bb43512cb63602db2f2be173286085))
+
 ## [3.1.1](https://github.com/thewildhive/go-motd/compare/v3.1.0...v3.1.1) (2026-10-08)
 
 
