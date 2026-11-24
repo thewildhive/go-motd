@@ -9,6 +9,7 @@
 ## Validation
 
 - [ ] `make check`
+- [ ] Included the command and relevant output from exercising the changed behavior
 - [ ] User-visible behavior and documentation agree
 - [ ] Release intent is represented by the Conventional Commit PR title
 

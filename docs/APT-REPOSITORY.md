@@ -60,9 +60,15 @@ replacement fingerprint through a trusted channel before resuming.
 
 ## Local verification
 
-Run `make check` and `bash .github/scripts/test-apt-repo.sh`. The APT test needs
-Go, GnuPG, apt-utils, dpkg-dev, and Docker. It uses throwaway keys and a disposable
-Ubuntu container with no network access, testing authenticated installation and
-upgrade, config preservation, architecture separation, and rejection of modified
-packages, invalid signatures, and expired metadata. CI runs it on native amd64
-and arm64 runners. Test keys must never be used for production publication.
+To verify a repository change locally without deploying it, use signed-release
+packages verified by the collector (both amd64 and arm64), an empty output
+directory, and a disposable OpenPGP signing key in an isolated `GNUPGHOME`.
+With `APT_SIGNING_FINGERPRINT` set to that key's uppercase fingerprint, run:
+
+```bash
+bash .github/scripts/build-apt-repo.sh /path/to/verified-packages /path/to/empty-output
+```
+
+The builder needs GnuPG, apt-utils, and dpkg-dev. It generates both architecture
+indexes and verifies `InRelease` and `Release.gpg`. Keep the signature output as
+proof; never use a production private key for a local build.

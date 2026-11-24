@@ -29,7 +29,6 @@ Types that do **not** trigger a release (no effect on the compiled binary):
 
 - `docs`: Documentation only
 - `style`: Formatting, whitespace, code style only
-- `test`: Adding or updating tests
 - `ci`: CI/CD configuration changes
 - `chore`: Maintenance tasks
 
@@ -40,7 +39,6 @@ feat: add support for Jellyfin media server
 fix: resolve memory leak in HTTP client
 docs: update installation instructions
 refactor: simplify configuration loading logic
-test: add unit tests for bandwidth monitoring
 ```
 
 ## Release Process
@@ -62,7 +60,7 @@ Release Please uses a short-lived installation token from the portfolio release 
 
 Automation never pushes directly to `main`; release metadata is merged through the same reviewed PR process.
 
-## Testing
+## Verifying a change
 
 Install [mise](https://mise.jdx.dev/getting-started.html), then prepare the pinned
 toolchain from the repository root:
@@ -83,7 +81,9 @@ Before submitting a PR, run the authoritative local gate:
 mise run check
 ```
 
-This covers formatting, module consistency, vet, deterministic and race tests, all five release build targets, native vulnerability analysis, and workflow syntax. CI additionally validates internal Markdown links and dependency changes.
+This covers formatting, module consistency, vet, all five release build targets, native vulnerability analysis, and workflow syntax. CI additionally validates internal Markdown links and dependency changes.
+
+Run `make build` and exercise the changed behavior with `./bin/motd`. For a system report change, for example, run `./bin/motd -no-config` for terminal output and `./bin/motd -no-config -json` for the machine-readable report. Include the command and relevant output in the PR, with private values redacted. Do not add or run test suites.
 
 ## Toolchain Updates
 

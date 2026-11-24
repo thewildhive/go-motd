@@ -7,9 +7,8 @@ invoke managed tools; prefix direct toolchain commands with `mise exec --`.
 
 - `make build` - Build regular binary to `bin/motd`
 - `make build-optimized` - Build optimized binary with `-ldflags="-s -w"`
-- `make test` - Run `go test ./...`
-- `make smoke` - Build optimized binary and show help
-- `make check` - Run the authoritative local gate: formatting, module consistency, vet, tests, race tests, native/cross-platform builds, vulnerability analysis, and workflow validation
+- `make smoke` - Build the optimized binary and run its help and version commands
+- `make check` - Check formatting, module consistency, vet, native and cross-platform compilation, binary vulnerabilities, and workflows
 - `make check-all` - Backward-compatible alias for `make check`
 - `make clean` - Remove `bin/` directory
 - `make cross-compile` - Build for all platforms
@@ -18,38 +17,24 @@ invoke managed tools; prefix direct toolchain commands with `mise exec --`.
 - `go vet ./...` - Run static analysis
 - `gofmt -l .` - Check formatting
 
-## Critical: Multiplatform Verification Before Any Commit
+## Proving a Change
 
-Many source files have platform build tags (`//go:build windows`, `//go:build darwin`,
-`//go:build !windows && !darwin`). On a Linux development machine, `go build`, `go vet`,
-and `go test` **skip these files entirely**. A missing import or undefined symbol in a
-platform-tagged file will not be caught locally — it will surface only in CI or the
-Release pipeline.
+Do not add or run test suites. Build the CLI with `make build`, exercise the
+changed path, and include the command and its relevant output in the PR. For
+example, `./bin/motd -no-config -json` shows the system report without loading
+service credentials. A change to a configured integration needs proof from
+that integration, not just the help screen. Redact private values before sharing.
 
-**Before committing any code change, run all of these:**
-
-```bash
-# Native (linux/amd64) — catches most issues
-go build ./...
-go vet ./...
-go test ./... -count=1
-
-# Cross-platform compilation — catches build-tag-hidden errors
-GOOS=windows GOARCH=amd64 go build ./...
-GOOS=darwin GOARCH=amd64 go build ./...
-GOOS=darwin GOARCH=arm64 go build ./...
-```
-
-The CI pipeline does this automatically via the "Cross-platform compilation check"
-step, but do not rely on CI alone — the earlier you catch a platform mismatch,
-the less rework is needed.
+Use `make check` before submitting. It compiles all five release targets
+because a native build skips files selected by other platforms' build tags.
+Cross-compilation checks those files compile; it does not prove runtime behavior.
 
 ## GitHub Workflow
 
 - Make future repository updates through pull requests instead of pushing directly to `main`.
 - Use short-lived feature branches, open a PR against `main`, and monitor CI before merge.
 - Wait for CI to pass on the PR before merging. If CI fails on a build-tag issue,
-  the Cross-platform compilation check log will show which target and symbol failed.
+  the failed `Build` job identifies the target and compiler error.
 - `Required` is the stable aggregate check context for the `main` ruleset
   (shown as `CI / Required` in the Actions UI).
 - This is a solo-maintained repository; do not add CODEOWNERS or require human approvals.
