@@ -52,9 +52,9 @@ func DebugLog(debug bool, msg string, args ...interface{}) {
 
 func DotLabel(label string) {
 	fmt.Print(label)
-	dots := DotLabelWidth - len(label)
-	if dots > 0 {
-		fmt.Print(strings.Repeat(".", dots))
+	end, width := labelPrefix(label, DotLabelWidth)
+	if end == len(label) && width < DotLabelWidth {
+		fmt.Print(strings.Repeat(".", DotLabelWidth-width))
 	}
 	fmt.Print(": ")
 }
@@ -85,12 +85,11 @@ func PrintHeader() {
 		if err == nil {
 			output, err := cmd.Output()
 			if err == nil && len(output) > 0 {
-				lines := bytes.Split(bytes.TrimRight(output, "\n"), []byte("\n"))
+				lines := bytes.Split(bytes.TrimRight(output, " \t\r\n"), []byte("\n"))
 				colors := rainbowColors()
 				for i, line := range lines {
 					fmt.Printf("%s%s%s\n", colors[i%len(colors)], string(line), Reset)
 				}
-				fmt.Println()
 				return
 			}
 		}
@@ -114,7 +113,6 @@ func PrintHeader() {
 		fmt.Printf("%s%s║  %s ║%s\n", Bold, Cyan, paddedContent, Reset)
 		fmt.Printf("%s%s%s%s\n", Bold, Cyan, bottomBorder, Reset)
 	}
-	fmt.Println()
 }
 
 func PrintSection(title string) {

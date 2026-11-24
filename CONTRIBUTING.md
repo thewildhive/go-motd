@@ -1,64 +1,19 @@
 # Contributing
 
-## Commit Message Convention
+## Submit a change
 
-This project uses [Conventional Commits](https://www.conventionalcommits.org/) to enable automatic semantic versioning and changelog generation.
+All changes, including releases, reach protected `main` through a pull request. Create a branch from `main`, push that branch, and open a PR against `main`. Do not push directly to `main` or bypass its required checks.
 
-### Format
+Use a [Conventional Commit](https://www.conventionalcommits.org/) PR title: squash merging makes it the commit subject that Release Please evaluates. For example, `fix(display): align resource labels` describes a patch, `feat(system): report reboot requests` describes a feature, and `docs: clarify installation` describes a documentation-only change. Use `!` or a `BREAKING CHANGE:` footer for an incompatible change. [Release Please configuration](release-please-config.json) defines the changelog sections.
 
-```
-<type>[optional scope]: <description>
-
-[optional body]
-
-[optional footer(s)]
-```
-
-### Types
-
-Only commit types that affect the compiled binary trigger a release:
-
-- `feat`: New feature (creates a **minor** version)
-- `fix`: Bug fix (creates a **patch** version)
-- `perf`: Performance improvements (creates a **patch** version)
-- `refactor`: Code restructuring (creates a **patch** version)
-- `build`: Build system or dependency changes (creates a **patch** version)
-- `BREAKING CHANGE:` in the footer creates a **major** version
-
-Types that do **not** trigger a release (no effect on the compiled binary):
-
-- `docs`: Documentation only
-- `style`: Formatting, whitespace, code style only
-- `ci`: CI/CD configuration changes
-- `chore`: Maintenance tasks
-
-### Examples
-
-```bash
-feat: add support for Jellyfin media server
-fix: resolve memory leak in HTTP client
-docs: update installation instructions
-refactor: simplify configuration loading logic
-```
+Describe the impact, include evidence from the real CLI when behavior changes, and wait for `CI / Required` before squash merging. This gate aggregates quality, all five target builds, vulnerability scanning, and (on PRs) dependency review.
 
 ## Release Process
 
-Releases are managed by Release Please after reviewed pull requests are squash-merged to `main`:
-
-1. Release Please opens or updates a reviewable release PR with the version and changelog.
-2. Merging that release PR creates the immutable `vX.Y.Z` tag and GitHub Release.
-3. A separate publishing workflow checks out that tag and uploads raw binaries, archives, checksums, and Ed25519 signatures.
-
-Release Please uses a short-lived installation token from the portfolio release GitHub App. The publisher runs only for a published stable tag in this repository, or by an explicit manual recovery dispatch naming an existing tag. Existing assets are compared byte-for-byte and are never silently replaced.
-
-## Development Workflow
-
-1. Create a feature branch from `main`
-2. Make your changes following the commit convention
-3. Push your branch and create a pull request
-4. Once merged to `main`, Release Please evaluates commits and opens or updates a release PR only when a release is needed
-
-Automation never pushes directly to `main`; release metadata is merged through the same reviewed PR process.
+1. After a releasable change lands on `main`, [Release](.github/workflows/release.yml) uses the release GitHub App to open or update a PR containing the version and changelog. Do not hand-edit the version or create a tag to publish a release.
+2. Review the release PR and merge it through the same protected path after `CI / Required` passes. Release Please then creates the `vX.Y.Z` tag and GitHub release.
+3. [Publish Release](.github/workflows/publish-release.yml) builds from that tag and uploads five raw binaries, five archives, two Debian packages, and two checksum manifests with their Ed25519 signatures.
+4. After publication succeeds, [Publish APT Repository](.github/workflows/apt-pages.yml) verifies the Debian packages, signs the repository metadata, and deploys to Pages. Confirm the release assets and APT deployment before announcing the release.
 
 ## Verifying a change
 
@@ -83,24 +38,11 @@ mise run check
 
 This covers formatting, module consistency, vet, all five release build targets, native vulnerability analysis, and workflow syntax. CI additionally validates internal Markdown links and dependency changes.
 
-Run `make build` and exercise the changed behavior with `./bin/motd`. For a system report change, for example, run `./bin/motd -no-config` for terminal output and `./bin/motd -no-config -json` for the machine-readable report. Include the command and relevant output in the PR, with private values redacted. Do not add or run test suites.
+Run `make build` and exercise the changed behavior with `./bin/motd`. For terminal layout changes, capture before and after with the same configuration and terminal width; use `-no-color` if it makes the output easier to compare. Check `./bin/motd -no-config -json` when changing system presentation to confirm the JSON report is unchanged. Include commands and relevant output in the PR, with private values redacted. Do not add or run automated test suites.
 
 ## Toolchain Updates
 
-`renovate.json` enables Renovate's built-in mise manager and the Go version
-directive in `go.mod`. Go updates change both pins in one `build(toolchain)` PR;
-other mise tool updates use `chore(tools)` and do not trigger releases. Updates
-require review and passing checks; automerge is disabled. Dependabot continues
-to manage Go module dependencies and GitHub Actions.
-
-Enable the [Mend Renovate GitHub App](https://github.com/apps/renovate) for this
-repository after merging the config, or include it in an existing self-hosted
-Renovate installation. The config alone does not start a bot. Review the
-Dependency Dashboard and the first update PR to confirm that all four tools
-are detected and both Go pins change together.
-
-The planned CI migration is documented in
-[`specs/mise-ci/TECH.md`](specs/mise-ci/TECH.md).
+[Renovate](renovate.json) monitors only the tools in `mise.toml`. It groups minor and patch updates, uses `chore(tools)` commits, and does not automerge. When changing Go, update `go.mod` and the mise pin together: local Make targets use mise, while CI and release publishing use `actions/setup-go` with `go.mod`. [Dependabot](.github/dependabot.yml) monitors Go modules and GitHub Actions. The [mise CI proposal](specs/mise-ci/TECH.md) describes a possible migration, not the current workflow.
 
 ## Release recovery and rollback
 

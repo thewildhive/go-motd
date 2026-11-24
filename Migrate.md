@@ -27,33 +27,9 @@ path separately; the cleanup below only handles `/usr/local/bin/motd`.
 
 ## 2. Configure APT and install the package
 
-Requires curl, GnuPG, and sudo. This verifies the repository key fingerprint
-before trusting it for this source only. If the source is already configured,
-repeating this setup is safe.
-
-```bash
-(
-  set -eu
-  arch=$(dpkg --print-architecture)
-  case "$arch" in amd64|arm64) ;; *) echo "Unsupported architecture: $arch" >&2; exit 1 ;; esac
-  work=$(mktemp -d)
-  trap 'rm -rf "$work"' EXIT
-  base=https://thewildhive.github.io/go-motd
-  curl -fLSs "$base/go-motd-archive-keyring.gpg" -o "$work/key.gpg"
-  actual=$(gpg --batch --show-keys --with-colons "$work/key.gpg" |
-    awk -F: '$1 == "fpr" {print $10; exit}')
-  test "$actual" = '13AADCCA9CA0F6C3D3000317AE8EEB3EDD382604'
-  sudo install -d -m 0755 /etc/apt/keyrings
-  sudo install -m 0644 "$work/key.gpg" /etc/apt/keyrings/go-motd.gpg
-  printf '%s\n' \
-    'Types: deb' "URIs: $base/" 'Suites: stable' 'Components: main' \
-    "Architectures: $arch" 'Signed-By: /etc/apt/keyrings/go-motd.gpg' \
-    > "$work/go-motd.sources"
-  sudo install -m 0644 "$work/go-motd.sources" /etc/apt/sources.list.d/go-motd.sources
-  sudo apt update
-  sudo apt install go-motd
-)
-```
+Follow the [APT installation steps](INSTALL.md#install), including verification
+of the signing key. If a release `.deb` is already installed, configure the same
+source for updates; there is no need to uninstall the package.
 
 Stop if installation fails. Confirm the package binary works before cleanup:
 
@@ -71,11 +47,12 @@ An installed package alone does not mean your shell is using it:
 
 This replaces the default standalone path with a symlink to `/usr/bin/motd`.
 Existing login hooks using `/usr/local/bin/motd` continue to work, and APT owns
-the actual executable. The command refuses custom symlinks and package-owned
-files. It can be rerun after a successful migration.
+the actual executable. Run the following as your normal user. It checks the old
+binary before using sudo to change files, and refuses custom symlinks and
+package-owned files. It can be rerun after a successful migration.
 
 ```bash
-sudo bash -eu <<'SH'
+bash -eu -o pipefail <<'SH'
 test "$(dpkg-query -W -f='${Status}' go-motd)" = 'install ok installed'
 /usr/bin/motd -v
 old=/usr/local/bin/motd
@@ -89,13 +66,14 @@ if [ -L "$old" ]; then
     exit 1
   }
 elif [ -e "$old" ]; then
-  test -f "$old" && test -x "$old"
+  test -f "$old"
+  test -x "$old"
   "$old" -v | grep '^MOTD Script v'
-  rm -- "$old"
+  sudo rm -- "$old"
 fi
-install -d -m 0755 /usr/local/bin
+sudo install -d -m 0755 /usr/local/bin
 if [ ! -L "$old" ]; then
-  ln -s /usr/bin/motd "$old"
+  sudo ln -s /usr/bin/motd "$old"
 fi
 SH
 hash -r
@@ -135,6 +113,7 @@ sudo apt install --only-upgrade go-motd
 
 Normal `apt upgrade` also includes go-motd. Stop using `motd self-update` and the
 standalone installer for this installation. See the
-[APT documentation](docs/INSTALL.md#apt-repository) for repository removal and
-signature/expiry troubleshooting. The older backup-producing migration helper
-remains available; its `--migrate` behavior is unchanged by this guide.
+[APT guide](INSTALL.md#remove) for repository removal, or [APT troubleshooting](docs/INSTALL.md#apt-repository)
+for signature and expiry errors. The older `install-deb.sh VERSION --migrate`
+helper backs up a recognized standalone binary before replacing it; unlike the
+APT setup, the helper only installs the specified release and does not add a source.

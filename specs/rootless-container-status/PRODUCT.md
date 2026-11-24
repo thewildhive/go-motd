@@ -6,7 +6,7 @@
 
 ## Problem
 
-The existing Docker and Compose status checks run commands as the user invoking `motd`. They cannot reliably inspect rootless Podman Quadlets owned by another user, and granting MOTD direct access to that user's runtime would unnecessarily couple it to the runtime and cross-user execution details.
+Direct Docker and Compose checks used to run as the user invoking `motd`. They could not reliably inspect rootless Podman Quadlets owned by another user. The status agent lets MOTD read a limited status snapshot without access to that user's container runtime.
 
 ## Goals
 
@@ -34,7 +34,7 @@ The existing Docker and Compose status checks run commands as the user invoking 
 
 3. The default maximum observation age is 30 seconds. Users may override it with a positive duration through configuration.
 
-4. `motd configure` allows users to add, edit, or remove the status-agent socket path and maximum observation age. Removing the socket configuration disables container status without requiring an agent to be uninstalled.
+4. `motd configure` allows users to enable the source, edit the socket path and maximum age, or disable it. Removing the entire `system.container_status` block disables the source; removing only `socket_path` selects the default path.
 
 5. `motd check-config` validates that:
    - The configured socket path is absolute.
@@ -42,7 +42,7 @@ The existing Docker and Compose status checks run commands as the user invoking 
    - If a filesystem entry currently exists at the configured path, it is a Unix socket rather than a regular file or directory.
    - The invoking user can connect to an existing socket.
 
-6. A missing socket is reported as a warning by `motd check-config`, not as an invalid configuration, because the user service may be temporarily stopped. Permission denial, a non-socket entry, an invalid path, and an invalid maximum age produce actionable diagnostics that identify the affected setting.
+6. A missing socket is a warning because the agent may be temporarily stopped. An invalid setting, a non-socket entry (including a symlink), or an existing socket that cannot supply valid, current status is an error. For a failed request, run the report with `-debug` for the underlying diagnostic on stderr.
 
 7. When the socket is configured, normal terminal and JSON output request one current status document from the agent during each invocation. Filesystem permissions are the only authentication mechanism; `go-motd` does not send or require a token.
 
@@ -60,11 +60,11 @@ The existing Docker and Compose status checks run commands as the user invoking 
 
 11. The aggregate total equals the number of workloads in the response, and the aggregate online count is derived from the rules in (10). `go-motd` does not trust conflicting aggregate counts supplied by an agent in place of the workload list.
 
-12. When every reported workload is online, terminal output shows one runtime-neutral line labeled `Containers` with `All workloads online` in the existing success style.
+12. When every workload in a nonempty response is online, Services & Resources shows a `Containers` row with `All workloads online`, in green when color is enabled. The value aligns with the other system and resource rows.
 
 13. When one or more reported workloads are not online, terminal output shows one line labeled `Containers` with `X of Y online` in the existing degraded style. Terminal output never includes workload names, regardless of how many workloads are degraded.
 
-14. A successful response containing zero workloads produces no `Containers` line in normal terminal output. JSON output represents the configured source with an empty workload list, zero counts, and an explicit empty-source status so machine consumers can distinguish it from an unavailable source.
+14. A successful response containing zero workloads produces no `Containers` row. JSON includes `containers` with `workloads: []`, `online: 0`, `total: 0`, and `status: "0 workloads"`, distinguishing an empty source from an unavailable one.
 
 15. JSON output exposes:
    - The observation timestamp.
@@ -93,7 +93,7 @@ The existing Docker and Compose status checks run commands as the user invoking 
 
 23. Configuring the status-agent socket completely replaces local Docker and Compose status behavior. `go-motd` no longer invokes `docker ps`, searches a Compose directory, or emits separate `Docker Containers` and `Docker Compose` lines.
 
-24. The `compose_dir` setting is removed in this release. A configuration containing it fails with a specific migration error that explains local Compose polling is no longer supported and directs the user to configure `motd-status-agent`; it must not fail only as an unexplained unknown field.
+24. A configuration containing the removed `system.compose_dir` setting fails with a migration error naming `system.container_status.socket_path` and `motd-status-agent`.
 
 25. Existing configuration unrelated to container status, including media services, tank mount, and network interface, retains its current behavior. Failure or absence of container status never suppresses those sections.
 

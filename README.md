@@ -13,39 +13,28 @@ Status: maintained. The latest release is the supported version; the CLI, JSON c
 - Debian packages for amd64 and arm64; standalone builds retain signed self-update
 - Cross-platform builds for Linux, macOS, and Windows
 
-## Debian and Ubuntu Installation
+## Installation
 
-Starting with v3, use the signed `.deb` release packages to let dpkg own the binary.
-Follow the [APT installation guide](INSTALL.md) for installation and updates.
-For an existing standalone installation, follow [Migrate to Debian packages](Migrate.md)
-to remove the old binary without making a backup.
-Existing configuration is preserved. Debian builds disable binary self-update;
-configure the [signed APT repository](docs/INSTALL.md#apt-repository) for ongoing
-package updates after its first deployment.
+- **Debian or Ubuntu (amd64/arm64):** [install `go-motd` with signed APT](INSTALL.md). The package installs `/usr/bin/motd`; use APT for updates.
+- **Moving from a standalone binary to APT:** [migrate the existing installation](Migrate.md) so login hooks run the package binary. Your JSON config stays in place.
+- **Standalone:** see the [Linux, macOS and Windows installation guide](docs/INSTALL.md#standalone-installation). These builds update with `motd self-update`.
 
 ## Build
 
-All build outputs are placed in the `bin/` directory:
+From the repository root, use [mise](https://mise.jdx.dev/getting-started.html)
+to install the pinned toolchain and build `bin/motd`:
 
 ```bash
-# Build regular binary
-make build
-
-# Build optimized binary
-make build-optimized
-```
-
-Direct Go build:
-
-```bash
-mkdir -p bin && go build -buildvcs=false -o bin/motd .
-mkdir -p bin && go build -buildvcs=false -ldflags="-s -w" -o bin/motd .
+mise trust mise.toml
+mise install
+mise run build
+./bin/motd -no-config
 ```
 
 ## Usage
 
-```bash
-./bin/motd [OPTIONS]
+```text
+motd [OPTIONS]
 
 Options:
   -h              Show this help message
@@ -60,8 +49,8 @@ Options:
 Commands:
   configure       Create or edit the config file
   check-config    Validate configuration and print diagnostics
-  self-update     Update to the latest version from GitHub releases
-  self-update --force    Force update to latest version (even if current)
+  self-update     Update a standalone installation from GitHub releases
+  self-update --force    Install the latest standalone version without prompting
 ```
 
 ## Configuration
@@ -76,7 +65,7 @@ Use `-config /path/to/config.json` to load a specific file, or `-no-config` to f
 
 Create a config file only when you want media integrations, rootless container status, or custom system paths such as `tank_mount` or a fixed network interface. When `system.container_status` is configured, `motd` polls the local `motd-status-agent` Unix socket and shows a health-aware `Containers` summary. Missing or unavailable agent data is skipped silently.
 
-If a legacy YAML config is detected (`config.yml`/`config.yaml`), `motd` exits with an unsupported-config message. Automatic YAML migration was removed in MOTD 2.0; see `MIGRATE_v2.md` for manual guidance.
+When no default JSON config is found, a legacy `config.yml` or `config.yaml` in a default config directory causes an error. Automatic YAML migration ended in v2.0; see [Migrating to MOTD 2.0](MIGRATE_v2.md) for field mappings.
 
 ### Example Config
 
@@ -137,11 +126,16 @@ If a legacy YAML config is detected (`config.yml`/`config.yaml`), `motd` exits w
 }
 ```
 
-Use `config.json.sample` as the complete reference template. Media services are opt-in; each configured instance must be enabled and include both a URL and token/API key. HTTPS is required for remote service URLs; plaintext HTTP is accepted only for loopback hosts such as `localhost`, `127.0.0.1`, and `::1`. Run `motd check-config` to validate configuration without treating a missing config as an error.
+Use [config.json.sample](config.json.sample) as a complete reference. Enable only the instances you want to query (up to 32 per service type). Each enabled instance needs a URL and a token or API key. HTTPS is required for remote URLs; plaintext HTTP is accepted only for loopback hosts such as `localhost`, `127.0.0.1`, and `::1`. Run `motd check-config` to validate configuration; no config is valid.
 
 ## System Information
 
 `motd` displays core system information without config. Linux/macOS use standard Unix tools where available. Windows uses PowerShell/CIM first and falls back to WMIC/tasklist where possible.
+
+The terminal header uses the short hostname, with an optional `figlet` banner.
+The `-json` report is a separate interface: it returns the version, configured
+system paths/interface and optional reboot, container and media data. It does
+not serialize the terminal's OS, uptime, memory and disk rows.
 
 On Linux, `motd` shows a `Reboot` row with the value `Required` when `/run/reboot-required` (or its legacy location, `/var/run/reboot-required`) exists as a regular file. No root access is needed. With `--json`, the same signal appears as `system.reboot_required: true`; an omitted field does not mean no reboot is needed.
 
@@ -157,22 +151,18 @@ Optional tools (vnstat, who, figlet, etc.) are resolved from a restricted set of
 | macOS | `/usr/bin`, `/usr/sbin`, `/bin`, `/sbin`, `/usr/local/bin`, `/opt/homebrew/bin` |
 | Windows | `C:\Windows\System32`, `C:\Windows\System32\WindowsPowerShell\v1.0` |
 
-If you install an optional tool in a non-standard path (for example `~/bin/figlet`), create a symlink from a trusted directory:
-
-```bash
-sudo ln -s "$HOME/bin/figlet" /usr/local/bin/figlet
-```
-
-Run with `-d` (debug) to see which tools are not found and why configured media services are skipped.
+Install optional tools in the appropriate system directories using your package
+manager. Do not link a user-writable program into a directory used by privileged
+processes. Run `motd -d` to diagnose skipped services and unavailable data.
 
 ### Inspect container status
 
 On a host with a running `motd-status-agent` and `system.container_status` enabled in your config, compare the terminal summary with the JSON workload details:
 
 ```bash
-./bin/motd check-config
-./bin/motd -no-color
-./bin/motd -json
+motd check-config
+motd -no-color
+motd -json
 ```
 
 For a nonempty snapshot, the terminal shows the aggregate `Containers` line without workload names. JSON includes names and individual statuses. If the agent is unavailable, both forms omit container status rather than reporting zero workloads.
@@ -185,59 +175,38 @@ Pending request count is fetched directly from Seerr:
 
 ## Self-Update
 
+For a standalone install in a directory you can write:
+
 ```bash
 motd self-update
 motd self-update --force
 ```
 
-### Security Model
-
-The self-update mechanism provides defense-in-depth against supply-chain attacks:
-
-| Layer | Protection | Breaks If |
-|-------|-----------|-----------|
-| HTTPS | Transport encryption; prevents MITM during download | CA compromise, TLS downgrade |
-| SHA-256 checksums | Detects corruption or tampering of the downloaded binary | Checksum file is also tampered (no origin verification) |
-| Ed25519 signature | Proves `checksums.txt` was published by the maintainer | Private signing key is compromised |
-| Trusted command paths | Prevents `motd self-update` from launching helpers from the current directory or user PATH | Trusted system directories are writable by an attacker |
-
-Operational assumptions:
-- The signing private key is stored as a GitHub repository secret (`SIGNING_PRIVATE_KEY`)
-- The corresponding public key is compiled into the binary (`checksumsPublicKeyHex`)
-- Release Please uses `RELEASE_APP_CLIENT_ID` and `RELEASE_APP_PRIVATE_KEY` to obtain a short-lived GitHub App token
-- Releases are created from reviewed release PRs; assets are built from the immutable tag and signed during publication
-- `motd self-update` requires write access to the binary's directory; use `sudo` or install to `~/.local/bin` if needed
-- Cross-device binary replacement uses a staged copy in the target directory before atomic rename
-
-### Windows Notes
-
-The Windows updater writes a batch script to a random path in `%TEMP%` that schedules replacement after the current process exits. Metacharacters in file paths (`%`, `^`, `&`, `|`, `<`, `>`, `()`) are escaped for batch safety.
-
-## Installation
-
-See `docs/INSTALL.md` for complete installation and system integration guidance.
+The updater verifies the Ed25519 signature on `checksums.txt` using its embedded
+release key, then checks the downloaded binary's SHA-256. `--force` skips the
+version check and confirmation, not the signature or checksum checks. Package
+builds reject both commands; use [APT updates](INSTALL.md#update) instead. To
+install a prior version, see [Roll back](docs/INSTALL.md#roll-back).
 
 ## Release Automation
 
-Releases are generated from conventional commits on `main` by Release Please. It opens a reviewable release PR containing the version and changelog; merging that PR creates the tag and GitHub Release, then a separate workflow builds and signs the assets from that immutable tag.
+Release Please opens a version and changelog PR from Conventional Commits on
+`main`. Merging that PR creates a `vX.Y.Z` tag and GitHub Release. `Publish
+Release` builds from that tag and signs two manifests: `checksums.txt` for the
+five raw binaries, and `archive-checksums.txt` for their five archives and the
+two Debian packages. A separate [APT publication workflow](docs/APT-REPOSITORY.md)
+verifies the packages, signs the APT metadata and deploys to GitHub Pages.
 
-- `feat` triggers minor releases
-- `fix`, `perf`, `refactor`, and `build` trigger patch releases
-- `docs`, `style`, `test`, `ci`, and `chore` do not trigger releases (they don't affect the compiled binary)
-- `BREAKING CHANGE:` in commit footer triggers a major release
-
-When a release PR is merged, the publishing workflow builds cross-platform raw binaries and archives and uploads them with signed `checksums.txt` files to the GitHub release for the new `vX.Y.Z` tag. Automation never writes directly to `main`.
-
-Publication is recoverable without moving the tag: manually dispatch `Publish Release` with the existing tag. It uploads missing files, accepts byte-identical existing files, and refuses replacements. Roll back by reinstalling a prior release after verifying its signed checksums; repair a bad release with a new patch rather than changing published assets.
+To recover an incomplete release, dispatch `Publish Release` with the existing
+tag. It uploads missing assets, accepts byte-identical files, and refuses to
+overwrite different content. Publish a new patch rather than moving a tag or
+replacing published assets.
 
 ## Development Checks
 
-Install [mise](https://mise.jdx.dev/getting-started.html) and prepare the pinned
-development tools before building or checking the repository:
+After [setting up the toolchain](#build), run the repository checks:
 
 ```bash
-mise trust mise.toml
-mise install
 mise run check
 ```
 
@@ -252,13 +221,6 @@ mise run cross-compile
 mise exec -- make package VERSION=X.Y.Z SIGNING_KEY_FILE=/path/to/ed25519-private-key.pem
 ```
 
-Manual examples:
-
-```bash
-VERSION=dev
-GOOS=linux GOARCH=amd64 mise exec -- go build -buildvcs=false -ldflags="-s -w -X main.VERSION=${VERSION}" -o bin/motd-linux-amd64 .
-GOOS=linux GOARCH=arm64 mise exec -- go build -buildvcs=false -ldflags="-s -w -X main.VERSION=${VERSION}" -o bin/motd-linux-arm64 .
-GOOS=darwin GOARCH=amd64 mise exec -- go build -buildvcs=false -ldflags="-s -w -X main.VERSION=${VERSION}" -o bin/motd-darwin-amd64 .
-GOOS=darwin GOARCH=arm64 mise exec -- go build -buildvcs=false -ldflags="-s -w -X main.VERSION=${VERSION}" -o bin/motd-darwin-arm64 .
-GOOS=windows GOARCH=amd64 mise exec -- go build -buildvcs=false -ldflags="-s -w -X main.VERSION=${VERSION}" -o bin/motd-windows-amd64.exe .
-```
+`cross-compile` writes raw binaries to `bin/` for Linux and macOS (amd64 and
+arm64) and Windows (amd64). `package` rebuilds under `bin/release/` and requires
+Linux packaging tools and an Ed25519 signing key; use a disposable key locally.

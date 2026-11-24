@@ -9,9 +9,9 @@
 ## Validation
 
 - [ ] `make check`
-- [ ] Included the command and relevant output from exercising the changed behavior
+- [ ] For behavior changes, included the real CLI commands and redacted output; for layout changes, included before/after at the same terminal width and checked JSON separately
 - [ ] User-visible behavior and documentation agree
-- [ ] Release intent is represented by the Conventional Commit PR title
+- [ ] Conventional Commit title describes the squash commit and its release intent
 
 ## Risk and recovery
 
