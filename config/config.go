@@ -33,6 +33,7 @@ type NetworkConfig struct {
 
 type SystemConfig struct {
 	ContainerStatus *ContainerStatusConfig `json:"container_status,omitempty"`
+	DriveHealth     bool                   `json:"drive_health,omitempty"`
 	TankMount       string                 `json:"tank_mount"`
 	Network         NetworkConfig          `json:"network,omitempty"`
 }

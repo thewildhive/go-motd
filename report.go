@@ -15,10 +15,11 @@ import (
 )
 
 type outputReport struct {
-	Version    string            `json:"version"`
-	System     systemReport      `json:"system"`
-	Containers *containersReport `json:"containers,omitempty"`
-	Media      []mediaJSONItem   `json:"media,omitempty"`
+	Version     string                    `json:"version"`
+	System      systemReport              `json:"system"`
+	DriveHealth *system.DriveHealthReport `json:"drive_health,omitempty"`
+	Containers  *containersReport         `json:"containers,omitempty"`
+	Media       []mediaJSONItem           `json:"media,omitempty"`
 }
 
 type systemReport struct {
@@ -100,6 +101,10 @@ func renderJSON(cfg config.Config, serviceSet map[string]bool, client *http.Clie
 			Status:          containerStatus.Status,
 			Workloads:       workloads,
 		}
+	}
+	if cfg.System.DriveHealth {
+		driveHealth := system.GetDriveHealth(debug)
+		report.DriveHealth = &driveHealth
 	}
 
 	for _, item := range media.CollectMediaStatuses(cfg, serviceSet, client, debug) {

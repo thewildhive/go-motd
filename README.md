@@ -130,6 +130,8 @@ Use [config.json.sample](config.json.sample) as a complete reference. Enable onl
 
 ## System Information
 
+On Linux, `system.drive_health: true` adds a `Drives` row from the local [collector snapshot](specs/daily-drive-health/PRODUCT.md) and a top-level `drive_health` object in JSON. `motd` never probes disks or starts collection.
+
 `motd` displays core system information without config. Linux/macOS use standard Unix tools where available. Windows uses PowerShell/CIM first and falls back to WMIC/tasklist where possible.
 
 The terminal header uses the short hostname, with an optional `figlet` banner.
