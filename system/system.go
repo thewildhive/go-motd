@@ -20,6 +20,7 @@ const (
 // without exposing the full Config struct to system functions.
 type ConfigAccessor struct {
 	ContainerStatus  *config.ContainerStatusConfig
+	DriveHealth      bool
 	TankMount        string
 	NetworkInterface string
 }
@@ -27,6 +28,7 @@ type ConfigAccessor struct {
 func ConfigAccessorFrom(cfg config.Config) ConfigAccessor {
 	return ConfigAccessor{
 		ContainerStatus:  cfg.System.ContainerStatus,
+		DriveHealth:      cfg.System.DriveHealth,
 		TankMount:        cfg.System.TankMount,
 		NetworkInterface: cfg.System.Network.Interface,
 	}

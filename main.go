@@ -108,6 +108,11 @@ func main() {
 		display.DotLabel("Reboot")
 		fmt.Printf("%sRequired%s\n", display.Yellow, display.Reset)
 	}
+	if sysCfg.DriveHealth {
+		driveHealth := system.GetDriveHealth(*debug)
+		display.DotLabel("Drives")
+		fmt.Printf("%s%s%s\n", display.Blue, system.DriveHealthText(driveHealth), display.Reset)
+	}
 
 	display.PrintSection("Services & Resources")
 
