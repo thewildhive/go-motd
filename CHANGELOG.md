@@ -1,5 +1,12 @@
 # Changelog
 
+## [3.3.0](https://github.com/thewildhive/go-motd/compare/v3.2.2...v3.3.0) (2026-11-24)
+
+
+### Features
+
+* display daily drive health in the MOTD ([#89](https://github.com/thewildhive/go-motd/issues/89)) ([8053888](https://github.com/thewildhive/go-motd/commit/8053888109029e8ca75b88ad692148463cafa9fc))
+
 ## [3.2.2](https://github.com/thewildhive/go-motd/compare/v3.2.1...v3.2.2) (2026-11-24)
 
 
