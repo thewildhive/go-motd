@@ -22,8 +22,9 @@ type outputReport struct {
 }
 
 type systemReport struct {
-	TankMount string `json:"tank_mount,omitempty"`
-	Interface string `json:"interface,omitempty"`
+	TankMount      string `json:"tank_mount,omitempty"`
+	Interface      string `json:"interface,omitempty"`
+	RebootRequired bool   `json:"reboot_required,omitempty"`
 }
 
 type containersReport struct {
@@ -80,8 +81,9 @@ func renderJSON(cfg config.Config, serviceSet map[string]bool, client *http.Clie
 	report := outputReport{
 		Version: VERSION,
 		System: systemReport{
-			TankMount: cfg.System.TankMount,
-			Interface: cfg.System.Network.Interface,
+			TankMount:      cfg.System.TankMount,
+			Interface:      cfg.System.Network.Interface,
+			RebootRequired: system.RebootRequired(debug),
 		},
 	}
 
