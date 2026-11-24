@@ -22,9 +22,8 @@ sudo apt update
 sudo apt install ca-certificates curl gnupg
 ```
 
-Configure the repository and install the package. The fingerprint check must
-succeed before the key is installed. Do not bypass it or use `trusted=yes`.
-The public key is trusted only for this source through `Signed-By`.
+Configure the repository and install the package. Stop if the fingerprint check
+fails. `Signed-By` restricts this source to the verified key; do not use `trusted=yes`.
 
 ```bash
 (
@@ -37,15 +36,16 @@ The public key is trusted only for this source through `Signed-By`.
   work=$(mktemp -d)
   trap 'rm -rf "$work"' EXIT
   base=https://thewildhive.github.io/go-motd
+  expected=13AADCCA9CA0F6C3D3000317AE8EEB3EDD382604
   curl -fLSs "$base/go-motd-archive-keyring.gpg" -o "$work/key.gpg"
   actual=$(gpg --batch --show-keys --with-colons "$work/key.gpg" |
     awk -F: '$1 == "fpr" {print $10; exit}')
-  test "$actual" = '13AADCCA9CA0F6C3D3000317AE8EEB3EDD382604'
+  test "$actual" = "$expected"
   sudo install -d -m 0755 /etc/apt/keyrings
   sudo install -m 0644 "$work/key.gpg" /etc/apt/keyrings/go-motd.gpg
   printf '%s\n' \
     'Types: deb' "URIs: $base/" 'Suites: stable' 'Components: main' \
-    "Architectures: $arch" 'Signed-By: /etc/apt/keyrings/go-motd.gpg' \
+    "Architectures: $arch" "Signed-By: /etc/apt/keyrings/go-motd.gpg $expected" \
     > "$work/go-motd.sources"
   sudo install -m 0644 "$work/go-motd.sources" /etc/apt/sources.list.d/go-motd.sources
   sudo apt update
@@ -68,9 +68,10 @@ apt-cache policy go-motd
 motd -no-config
 ```
 
-Both version commands should agree. APT policy should list
-`https://thewildhive.github.io/go-motd` for your architecture. If `motd` runs an
-older version, follow [the standalone cleanup](Migrate.md#3-remove-the-old-binary-without-a-backup).
+`type -a motd` should list `/usr/bin/motd` or a link to it before any other
+binary. Matching version numbers alone do not identify which file is running.
+APT policy should list `https://thewildhive.github.io/go-motd` for your architecture.
+If a standalone binary comes first, follow [the standalone cleanup](Migrate.md#3-remove-the-old-binary-without-a-backup).
 After returning from Bash to zsh, run `rehash` to clear cached command locations.
 
 Configuration is optional. Existing `~/.config/motd/config.json` and
@@ -95,7 +96,7 @@ Release workflows build both architecture packages, verify their signed
 checksums, and deploy signed APT metadata to GitHub Pages. Metadata refreshes
 weekly and expires after 30 days. For signature, expiry, or transient index-hash
 errors, see [APT troubleshooting](docs/INSTALL.md#apt-repository); never disable
-authentication to work around an error.
+authentication or expiry verification to work around an error.
 
 ## Remove
 

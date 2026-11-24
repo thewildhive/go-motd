@@ -209,7 +209,8 @@ func ShowMediaServices(cfg config.Config, selected map[string]bool, client *http
 
 	display.PrintSection("Media Services")
 	for _, result := range collectMediaStatuses(services, client, debug) {
-		fmt.Print(formatMediaLine(result.Name, result.Text, result.Color))
+		display.DotLabel(display.FitInstanceLabel(result.Name))
+		fmt.Printf("%s%s%s\n", result.Color, result.Text, display.Reset)
 	}
 }
 
@@ -319,14 +320,6 @@ func serviceSkipReason(service config.ServiceConfig, wantsToken bool) string {
 
 func logSkippedService(debug bool, kind string, service config.ServiceConfig, reason string) {
 	display.DebugLog(debug, "Skipping %s: %s", serviceLabel(kind, service.Name), reason)
-}
-
-func formatMediaLine(label, text, color string) string {
-	dots := display.DotLabelWidth - len(label)
-	if dots < 0 {
-		dots = 0
-	}
-	return fmt.Sprintf("%s%s: %s%s%s\n", label, strings.Repeat(".", dots), color, text, display.Reset)
 }
 
 func serviceLabel(base, name string) string {

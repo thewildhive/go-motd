@@ -1,27 +1,13 @@
 # Use mise in CI
 
-Status: proposed. This change prepares local mise pins and Renovate; workflow
-migration is a separate implementation task.
+Status: **proposed for GitHub Actions**. Local development already uses mise. Neither CI nor release publishing installs mise today.
 
-## Context
+## Current behavior
 
-The goal is to run local development, pull-request checks, and release builds
-with the same reviewed tool versions. `mise.toml` now pins Go, govulncheck,
-actionlint, and ShellCheck. The Go directive in `go.mod` matches the compiler
-pin, and `GOTOOLCHAIN=local` prevents implicit toolchain downloads. Make targets
-invoke the managed executables instead of installing tools with `go run ...@v`.
-
-Preparation started in a snapshot without usable Git metadata or `.github`.
-Workflow research and subsequent merge validation use a complete checkout of
-public `main` at commit `c97d867bc2b7b37e9a1be118785ff0193ba8a5fa`. That snapshot
-predates the current CI job layout. Use the active branch's jobs when migrating.
-Relevant baseline files:
-
-- [`ci.yml:25`](https://github.com/thewildhive/go-motd/blob/c97d867bc2b7b37e9a1be118785ff0193ba8a5fa/.github/workflows/ci.yml#L25): the Go jobs use `actions/setup-go` with `go-version-file: go.mod`. Quality pins actionlint separately; vulnerabilities pins govulncheck separately.
-- [`ci.yml:173`](https://github.com/thewildhive/go-motd/blob/c97d867bc2b7b37e9a1be118785ff0193ba8a5fa/.github/workflows/ci.yml#L173): `Required` aggregates the checks and is the stable ruleset context.
-- [`publish-release.yml:42`](https://github.com/thewildhive/go-motd/blob/c97d867bc2b7b37e9a1be118785ff0193ba8a5fa/.github/workflows/publish-release.yml#L42): the publisher checks out an immutable release tag before setting up Go and packaging assets.
-- [`package-release.sh:35`](https://github.com/thewildhive/go-motd/blob/c97d867bc2b7b37e9a1be118785ff0193ba8a5fa/.github/scripts/package-release.sh#L35): packaging invokes Go directly for five targets, then Debian packages and signed archives.
-- [`dependabot.yml:3`](https://github.com/thewildhive/go-motd/blob/c97d867bc2b7b37e9a1be118785ff0193ba8a5fa/.github/dependabot.yml#L3): Dependabot owns Go module dependencies and GitHub Actions updates.
+- [Local tooling](../../mise.toml) pins Go, govulncheck, actionlint, and ShellCheck. The [Makefile](../../Makefile) runs them through mise with `GOTOOLCHAIN=local`. The Go pin and [`go.mod`](../../go.mod) directive must be updated together.
+- [CI](../../.github/workflows/ci.yml) uses `actions/setup-go` with `go-version-file: go.mod`. Quality runs formatting, module consistency, vet, a separately pinned actionlint, release-script syntax, PR-title validation, and offline Markdown link checks. The five cross-builds and native binary vulnerability scan are separate jobs. CI pins govulncheck independently of mise. `CI / Required` aggregates these jobs and the PR-only dependency review.
+- [Release Please](../../.github/workflows/release.yml) manages the release PR, version, tag, and GitHub release. [Publish Release](../../.github/workflows/publish-release.yml) checks out the validated tag and selects Go from its `go.mod` before packaging. [APT publication](../../.github/workflows/apt-pages.yml) consumes signed Debian release assets and does not compile Go.
+- [Renovate](../../renovate.json) is limited to the mise manager and `mise.toml`; it does not edit `go.mod` or workflow inputs. [Dependabot](../../.github/dependabot.yml) manages Go modules and GitHub Actions. Contributors must keep the Go pins in sync when reviewing updates.
 
 ## Proposed changes
 
@@ -35,16 +21,14 @@ Do not copy tool versions into workflow inputs such as `mise_toml` or
 
 Use the action's `install: true`, `cache: true`, `env: true`, and
 `export_path: true` behavior. Explicitly pin its `version` input to a reviewed
-stable mise release. Start with the verified local release `2026.10.8` or a newer
-stable version resolved and tested at implementation time. Let the action
-perform its repository trust/install step; do not trust unrelated parent or
-child configs. Installation failures must fail the job.
+stable mise release. Let the action perform its repository trust/install step;
+do not trust unrelated parent or child configs. Installation failures must fail the job.
 
 Dependabot continues to update action SHAs, including `jdx/mise-action`.
 Add a narrowly scoped Renovate regex manager for the action's `version` input,
 annotated with datasource `github-releases` and dependency `jdx/mise`. Enable
-`custom.regex` alongside the current managers and use `ci` commits for mise
-bootstrap updates. This is needed because the mise manager tracks tools in
+`custom.regex` alongside the mise manager and include the migrated workflows in
+Renovate's allowed paths. Use `ci` commits for mise bootstrap updates. The mise manager tracks tools in
 `mise.toml`, and the Actions manager tracks action references, not this input.
 Keep the bootstrap version consistent across migrated jobs and test it with
 the existing tool pins before accepting an update.
@@ -61,7 +45,7 @@ and conventional-title/documentation/dependency checks.
 Retain the `Required` aggregate and its dependency list. Do not add mise setup
 to jobs that only invoke GitHub Actions, such as dependency review or the
 aggregate gate. Preserve the Release Please and APT publishing workflows;
-they do not compile Go in the researched baseline.
+they do not compile Go.
 
 Use `mise exec --` for direct tool commands and scripts that invoke Go. Preserve
 the separate quality, builds, and vulnerability jobs instead of running
@@ -111,28 +95,13 @@ recovery against an actual pre-migration tag before changing the publisher.
 ## Validation
 
 1. Run `mise install`, `mise run check`, and `mise run smoke` in a complete checkout. Confirm vet, all five cross-builds, binary vulnerability analysis, actionlint, and shell syntax checks pass. Record the built CLI's help and version output.
-2. Validate Renovate with its official strict config validator. Inspect extraction and a first update PR: Go changes both pins together; validation tools are detected; the new bootstrap manager finds every mise-action version input; Dependabot ownership stays distinct.
+2. Validate the proposed Renovate configuration with its strict config validator. Check extraction for all four tools and every mise-action version input; verify Dependabot ownership stays distinct. A Go upgrade must change both the mise pin and `go.mod` in the same PR.
 3. Run the CI workflow from a PR and a merge-group event. Confirm the same `CI / Required` context and the five release build targets. Fork PRs must work without privileged credentials or release secrets.
 4. Exercise clean and warm caches on the runners used by the migrated jobs. Bump a tool pin on a branch and confirm the next run installs and reports that version. A stale cache must not select a different compiler.
 5. Deliberately mismatch the two Go pins and verify a clear Quality failure. Test an invalid/unavailable tool pin and confirm setup fails rather than using runner-provided binaries.
 6. Build and verify the complete release set with a disposable signing key. Test both a new tag with mise config and a pre-migration tag without it. Recovery must use each tag's exact compiler and retain byte-for-byte asset comparison.
 7. Search workflows and Make targets for residual `actions/setup-go`, duplicated Go/tool versions, and `go run ...@v` installs. Account explicitly for any remaining occurrence before declaring migration complete.
 
-At preparation time, Linux ARM64 with Go `1.27.2` passed all five cross-builds,
-native vulnerability analysis, and workflow validation. Renovate `44.150.1`
-passed strict config validation and extraction/rule checks for all four tools
-and both grouped Go pins.
+## Delivery constraint
 
-The existing Renovate onboarding PR is connected to the repository. Before
-the Go upgrade, its vulnerability check reported eight standard-library
-findings fixed in `1.27.2`. Live Actions validation of the proposed CI migration,
-cache behavior, and historical-tag release recovery remains required during
-implementation.
-
-## Parallelization
-
-Use one implementation branch, `ci/use-mise`, and one PR. CI setup, caches,
-Renovate bootstrap matching, and release recovery share toolchain assumptions;
-sequential implementation and validation are simpler than assigning file
-ownership to parallel agents. Implement CI first, then publisher recovery, then
-run the full gate and review the first Renovate update.
+Implement any migration through a PR against protected `main`. Keep the `CI / Required` gate intact; do not change branch protection, create manual tags, or publish production releases to validate the proposal.

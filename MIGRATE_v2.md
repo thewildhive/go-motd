@@ -1,8 +1,11 @@
 # Migrating to MOTD 2.0
 
-MOTD 2.0 no longer loads or migrates legacy YAML configs. If `config.yml` or `config.yaml` is present and no JSON config is found, `motd` exits with an unsupported-config error.
-
-Create a JSON config manually, then remove or archive the old YAML file.
+This guide is for installations that still have a v1 YAML configuration. Starting
+in v2.0, `motd` no longer loads or converts YAML. If no default JSON config is
+found but `config.yml` or `config.yaml` exists in a default config directory,
+`motd` reports an unsupported config. Create JSON manually, validate it, then
+archive the old YAML. To migrate a standalone binary to APT without changing an
+existing JSON config, use the [Debian package migration guide](Migrate.md) instead.
 
 ## Config Paths
 
@@ -62,10 +65,6 @@ Organizr is not supported in MOTD 2.0. Leave Organizr entries out of the JSON co
     "seerr": []
   },
   "system": {
-    "container_status": {
-      "socket_path": "/var/run/motd-status/agent.sock",
-      "max_age": "30s"
-    },
     "tank_mount": "/mnt/tank",
     "network": {
       "interface": "eth0"
@@ -76,7 +75,9 @@ Organizr is not supported in MOTD 2.0. Leave Organizr entries out of the JSON co
 
 Remote media service URLs should use HTTPS. Plaintext HTTP is accepted only for loopback hosts such as `localhost`, `127.0.0.1`, and `::1`.
 
-The former `system.compose_dir` setting is removed. Configurations containing it fail with a migration error; remove it and configure `system.container_status` only after installing `motd-status-agent`.
+On current releases, remove any `system.compose_dir` setting: it is rejected.
+For optional container status, configure `system.container_status` only after
+setting up `motd-status-agent`; see the [current configuration example](README.md#example-config).
 
 After writing the JSON file, run:
 

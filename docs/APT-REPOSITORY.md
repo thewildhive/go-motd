@@ -2,7 +2,7 @@
 
 The `Publish APT Repository` workflow deploys a complete signed repository to
 GitHub Pages after `Publish Release` succeeds, on manual dispatch, and weekly.
-The expected URL is `https://thewildhive.github.io/go-motd/`.
+Clients use `https://thewildhive.github.io/go-motd/` (`stable`, component `main`).
 
 ## Activation
 
@@ -13,10 +13,11 @@ The expected URL is `https://thewildhive.github.io/go-motd/`.
    certificate outside GitHub.
 3. Add the ASCII-armored private key as Actions secret `APT_SIGNING_KEY` and its
    uppercase 40-character fingerprint as Actions variable `APT_SIGNING_FINGERPRINT`.
-4. Merge the workflow through a reviewed, passing PR, then manually run
-   `Publish APT Repository` on `main` for the first deployment.
-5. Verify the deployed key fingerprint against the original trusted value and
-   test `apt update` and installation before sharing the [client setup](INSTALL.md#apt-repository).
+4. For a new deployment, run `Publish APT Repository` on protected `main` after
+   merging the publishing workflow through a reviewed, passing PR.
+5. Verify the deployed key against the trusted fingerprint in the
+   [client setup](../INSTALL.md#install). Check that `apt update` succeeds and
+   that `apt-cache policy go-motd` offers the published package version.
 
 The workflow imports the secret into a temporary GnuPG home and deletes it after
 signing. Only public keys, metadata, and verified packages enter the Pages artifact.
@@ -54,9 +55,10 @@ clients also need the updated public key certificate. Distribute it through the
 documented fingerprint-checked setup process.
 
 Changing the primary key changes the fingerprint and requires an explicit client
-trust migration. Do not simply replace the key and assume existing clients will
-trust it. In a compromise, stop publication, revoke the key, and distribute the
-replacement fingerprint through a trusted channel before resuming.
+trust migration. Update the fingerprint in the [client setup](../INSTALL.md#install)
+as well as the Actions variable and secret. Existing clients must install the new
+keyring and update `Signed-By`. In a compromise, stop publication, revoke the key,
+and distribute the replacement fingerprint through a trusted channel before resuming.
 
 ## Local verification
 

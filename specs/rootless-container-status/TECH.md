@@ -1,16 +1,8 @@
 # Rootless Container Status Technical Design
 
-## Context
+## Consumer protocol
 
-The product behavior is defined in [PRODUCT.md](PRODUCT.md). At commit `62d971ccd2ae8810c1f4d9ba49e02cef9a86e697`, `go-motd` invokes Docker directly in [`system/system.go:20-41`](https://github.com/thewildhive/go-motd/blob/62d971ccd2ae8810c1f4d9ba49e02cef9a86e697/system/system.go#L20-L41), discovers Compose files and shells out per project in [`system/compose.go:25-115`](https://github.com/thewildhive/go-motd/blob/62d971ccd2ae8810c1f4d9ba49e02cef9a86e697/system/compose.go#L25-L115), and calls both renderers from [`main.go:97-110`](https://github.com/thewildhive/go-motd/blob/62d971ccd2ae8810c1f4d9ba49e02cef9a86e697/main.go#L97-L110). JSON reporting independently calls the Compose collector in [`report.go:68-85`](https://github.com/thewildhive/go-motd/blob/62d971ccd2ae8810c1f4d9ba49e02cef9a86e697/report.go#L68-L85).
-
-Configuration is strictly decoded in [`config/config.go:25-40,73-90`](https://github.com/thewildhive/go-motd/blob/62d971ccd2ae8810c1f4d9ba49e02cef9a86e697/config/config.go#L25-L40). The wizard edits system settings in [`configure.go:64-73`](https://github.com/thewildhive/go-motd/blob/62d971ccd2ae8810c1f4d9ba49e02cef9a86e697/configure.go#L64-L73), and diagnostics validate `compose_dir` in [`check_config.go:32-85`](https://github.com/thewildhive/go-motd/blob/62d971ccd2ae8810c1f4d9ba49e02cef9a86e697/check_config.go#L32-L85). The module uses only the standard library and must preserve that constraint.
-
-## Proposed Changes
-
-### Shared Protocol
-
-Protocol v1 is HTTP/1.1 over a Unix stream socket. The only successful operation is `GET /v1/status`; no request body is sent. The client sends `Host: localhost` and `Accept: application/json`.
+[PRODUCT.md](PRODUCT.md) defines the user-visible contract. The [client](../../system/container_status.go) sends `GET /v1/status` over the configured Unix stream socket using HTTP/1.1, `Host: motd-status-agent`, and `Accept: application/json`. There is no request body or authentication token; the transport dials only the local socket, not the HTTP hostname.
 
 A `200 OK` body is:
 
@@ -30,42 +22,19 @@ A `200 OK` body is:
 
 Required fields reject missing, null, or invalid values. `observed_at` uses RFC 3339 with optional fractional seconds. Workload names must be non-empty and unique. `state` accepts only `running`, `stopped`, `failed`, or `unknown`; `health` accepts only `healthy`, `unhealthy`, `starting`, `none`, or `unknown`. Unknown JSON fields are ignored for additive v1 compatibility. The agent supplies no aggregate counts; the consumer sorts workloads by name and derives `online` as `state == "running" && (health == "healthy" || health == "none")`.
 
-Non-200 responses use JSON when possible:
+The client requires `200 OK` and media type `application/json`. It rejects other status codes without interpreting their body as an agent error message. There are no redirects, retries, or cached snapshots. The client applies a one-second timeout, reads at most 1 MiB plus one overflow byte, and rejects oversized or malformed responses. An observation older than `max_age` or more than five seconds in the future is unavailable.
 
-```json
-{
-  "protocol_version": 1,
-  "error": {
-    "code": "collection_timeout",
-    "message": "workload status collection timed out"
-  }
-}
-```
+## Configuration and migration
 
-Stable v1 error codes are `bad_request`, `not_found`, `method_not_allowed`, `runtime_unavailable`, `permission_denied`, `collection_timeout`, `response_too_large`, and `internal_error`. Clients treat every non-200 response as unavailable; the codes exist for bounded debug diagnostics.
+[Configuration loading](../../config/config.go) rejects the removed `system.compose_dir` before strict decoding. The diagnostic names `system.container_status.socket_path` and `motd-status-agent`. A missing `container_status` object disables requests. With an object present, the default socket is `/var/run/motd-status/agent.sock`; the default maximum age is `30s`. Overrides require an absolute path and a positive Go duration.
 
-### Configuration and Migration
+[The wizard](../../configure.go) adds, edits, or removes the object. [Configuration diagnostics](../../check_config.go) check the settings and inspect the socket with `os.Lstat`. A missing entry is a warning; a non-socket or symlink is an error. For an existing socket, validation requests the same current snapshot used for reporting. Failure to obtain one is an error. There is no separate Windows validation path; a usable Unix socket is required on the host that runs the client.
 
-- Replace `System.ComposeDir` with `System.ContainerStatus`, containing `SocketPath string` (`socket_path`) and `MaxAge string` (`max_age`). Keep duration text in persisted config and parse it with `time.ParseDuration`; an empty max age means `30s`.
-- Use `/var/run/motd-status/agent.sock` as the wizard's offered default and the effective path when an enabled `container_status` object omits `socket_path`. An absent `container_status` object remains disabled.
-- Add a decode-time migration check for `system.compose_dir` before strict decoding. Return a dedicated error explaining that Compose polling was removed and naming `system.container_status.socket_path`. Do not retain `ComposeDir` in the runtime config type.
-- Update sample configuration, README, installation and migration documentation. Remove Docker/Compose optional-tool claims and describe the agent as an external prerequisite.
+## Rendering
 
-### Client and Collection
+[Terminal output](../../main.go) uses a dotted `Containers` label in Services & Resources. It shows green `All workloads online` or yellow `X of Y online`, without listing names. It omits the row when no workloads were reported or no valid snapshot was available.
 
-- Replace `system/compose.go` with `system/container_status.go`. Define exported `ContainerStatus` and `WorkloadStatus` values used by terminal and JSON renderers. Keep protocol DTOs private.
-- Implement a local `http.Client` with a custom `http.Transport.DialContext` that always dials the configured Unix socket. Set the client timeout to one second and disable redirects. Do not use a package global client or transport.
-- Limit the response body to 1 MiB plus one sentinel byte before decoding. Reject oversized data, non-200 status, non-JSON content, malformed JSON, trailing JSON values, duplicate names, invalid enums, unsupported protocol versions, stale timestamps, and timestamps over five seconds in the future.
-- Derive counts only after validating the complete response. Sort workloads by name. Return `(ContainerStatus, true)` for a valid empty response and `false` for unavailable data so JSON can distinguish these states.
-- Remove `ShowDocker` and the `ComposeDir` method of `system.ConfigAccessor`.
-
-### Rendering and Diagnostics
-
-- Add `ShowContainers(cfg, debug)` and call it once where the two Docker renderers currently run. It emits no line for an empty list, green `All workloads online` when all are online, and yellow `X of Y online` otherwise.
-- Replace `outputReport.Compose` with an optional `Containers` report carrying protocol version, observation timestamp, derived counts/status, and complete sorted workload details including derived `online`.
-- Extend the wizard's System Setup section with an enable/edit prompt, socket path default, and max-age default. Disabling clears both fields.
-- Extend `check-config`: parse duration and require it to be positive; require an absolute socket path; inspect existing entries with `os.Lstat`; require a Unix socket; and attempt a bounded protocol request to distinguish permission/connectivity errors. A nonexistent socket is a warning. Protocol or permission failures are errors because a present endpoint cannot be consumed.
-- Gate Unix-socket communication by platform. On Windows, configured container status produces an actionable validation error and normal output skips it. Darwin can use Unix sockets but the external agent remains Linux-only; cross-platform compilation must retain all symbols.
+[JSON output](../../report.go) emits an optional `containers` object with `protocol_version`, UTC `observed_at`, `online`, `total`, `status`, and `workloads` sorted by name. Each workload includes its `name`, `state`, `health`, and derived `online` value. An empty response has status `0 workloads` and an empty array. An unavailable source is omitted, and the rest of the report continues.
 
 ## Validation
 
@@ -76,7 +45,7 @@ Stable v1 error codes are `bad_request`, `not_found`, `method_not_allowed`, `run
 
 ## Risks and Mitigations
 
-- Immediate `compose_dir` removal breaks existing configuration. The dedicated migration error and documentation make the required action explicit.
+- Existing `compose_dir` configurations require migration. The dedicated error names the new setting.
 - A shared `/var/run` socket requires administrator-managed ownership. The consumer never creates or changes it and treats absence as best-effort.
 - Login latency can regress if socket operations hang. The single one-second client deadline, body limit, and no-retry rule bound the impact.
-- Keep the v1 schema in both technical specs aligned with the real agent response; incompatible changes require protocol version 2.
+- Additive fields are compatible with protocol v1; an incompatible change requires a new protocol version and a compatible consumer.
