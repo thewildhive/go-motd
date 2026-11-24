@@ -143,7 +143,7 @@ Use `config.json.sample` as the complete reference template. Media services are 
 
 `motd` displays core system information without config. Linux/macOS use standard Unix tools where available. Windows uses PowerShell/CIM first and falls back to WMIC/tasklist where possible.
 
-On Linux, `motd` shows `Reboot required` when `/run/reboot-required` (or its legacy location, `/var/run/reboot-required`) exists as a regular file. No root access is needed. With `--json`, the same signal appears as `system.reboot_required: true`; an omitted field does not mean no reboot is needed.
+On Linux, `motd` shows a `Reboot` row with the value `Required` when `/run/reboot-required` (or its legacy location, `/var/run/reboot-required`) exists as a regular file. No root access is needed. With `--json`, the same signal appears as `system.reboot_required: true`; an omitted field does not mean no reboot is needed.
 
 Windows temperature can be unavailable when firmware does not expose a compatible thermal sensor. Bandwidth reporting is not currently implemented on Windows.
 

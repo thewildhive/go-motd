@@ -105,7 +105,8 @@ func main() {
 	sysCfg := system.ConfigAccessorFrom(cfg)
 	showPlatformSystemInfo(sysCfg, *debug)
 	if system.RebootRequired(*debug) {
-		fmt.Printf("%s⚠ Reboot required%s\n", display.Yellow, display.Reset)
+		display.DotLabel("Reboot")
+		fmt.Printf("%sRequired%s\n", display.Yellow, display.Reset)
 	}
 
 	display.PrintSection("Services & Resources")
