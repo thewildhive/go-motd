@@ -1,6 +1,13 @@
 ## [v2.0.0] - 2026-07-06
 
 
+## [3.2.0](https://github.com/thewildhive/go-motd/compare/v3.1.2...v3.2.0) (2026-11-24)
+
+
+### Features
+
+* show when Linux requires a reboot ([#82](https://github.com/thewildhive/go-motd/issues/82)) ([9033f75](https://github.com/thewildhive/go-motd/commit/9033f755b190c949c87df372b6a27f40b283b286))
+
 ## [3.1.2](https://github.com/thewildhive/go-motd/compare/v3.1.1...v3.1.2) (2026-11-02)
 
 
