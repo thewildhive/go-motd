@@ -1,6 +1,13 @@
 ## [v2.0.0] - 2026-07-06
 
 
+## [3.2.1](https://github.com/thewildhive/go-motd/compare/v3.2.0...v3.2.1) (2026-11-24)
+
+
+### Bug Fixes
+
+* align reboot warning with system information ([#84](https://github.com/thewildhive/go-motd/issues/84)) ([ee5fea6](https://github.com/thewildhive/go-motd/commit/ee5fea6e23299ff39bf4a4f98678c76fced409d8))
+
 ## [3.2.0](https://github.com/thewildhive/go-motd/compare/v3.1.2...v3.2.0) (2026-11-24)
 
 
