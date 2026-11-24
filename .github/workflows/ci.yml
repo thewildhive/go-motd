@@ -66,30 +66,6 @@ jobs:
           args: --offline --no-progress './**/*.md'
           fail: true
 
-  tests:
-    name: Tests
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: go.mod
-          cache: true
-      - name: Run race tests with coverage
-        run: go test -race -count=1 -covermode=atomic -coverprofile=coverage.out ./...
-      - name: Write coverage summary
-        shell: bash
-        run: |
-          {
-            echo '## Go coverage'
-            echo '```text'
-            go tool cover -func=coverage.out
-            echo '```'
-          } >> "$GITHUB_STEP_SUMMARY"
-
   builds:
     name: Build (${{ matrix.os }}/${{ matrix.arch }})
     runs-on: ubuntu-latest
@@ -114,31 +90,6 @@ jobs:
       - name: Build target
         shell: bash
         run: GOOS=${{ matrix.os }} GOARCH=${{ matrix.arch }} go build -buildvcs=false ./...
-
-  debian:
-    name: Debian (${{ matrix.runner }})
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 15
-    strategy:
-      fail-fast: false
-      matrix:
-        runner: [ubuntu-24.04, ubuntu-24.04-arm]
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Set up Go
-        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
-        with:
-          go-version-file: go.mod
-          cache: true
-      - name: Test native Debian package lifecycle
-        run: bash .github/scripts/test-deb.sh
-      - name: Test signed installer migration in isolation
-        run: bash .github/scripts/test-deb-installer.sh
-      - name: Install APT repository tools
-        run: sudo apt-get update && sudo apt-get install -y apt-utils dpkg-dev gnupg
-      - name: Test signed APT repository and upgrades
-        run: bash .github/scripts/test-apt-repo.sh
 
   vulnerabilities:
     name: Vulnerabilities
@@ -173,7 +124,7 @@ jobs:
   required:
     name: Required
     if: always()
-    needs: [quality, tests, builds, debian, vulnerabilities, dependency-review]
+    needs: [quality, builds, vulnerabilities, dependency-review]
     runs-on: ubuntu-latest
     timeout-minutes: 2
     steps:

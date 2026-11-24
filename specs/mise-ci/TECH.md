@@ -13,12 +13,11 @@ invoke the managed executables instead of installing tools with `go run ...@v`.
 
 Preparation started in a snapshot without usable Git metadata or `.github`.
 Workflow research and subsequent merge validation use a complete checkout of
-public `main` at commit `c97d867bc2b7b37e9a1be118785ff0193ba8a5fa`. The checkout
-includes Debian packaging checks missing from the initial snapshot; those
-checks are preserved. Re-read the actual branch before CI implementation.
+public `main` at commit `c97d867bc2b7b37e9a1be118785ff0193ba8a5fa`. That snapshot
+predates the current CI job layout. Use the active branch's jobs when migrating.
 Relevant baseline files:
 
-- [`ci.yml:25`](https://github.com/thewildhive/go-motd/blob/c97d867bc2b7b37e9a1be118785ff0193ba8a5fa/.github/workflows/ci.yml#L25): `quality`, `tests`, `builds`, `debian`, and `vulnerabilities` use `actions/setup-go` with `go-version-file: go.mod`. Quality pins actionlint separately; vulnerabilities pins govulncheck separately.
+- [`ci.yml:25`](https://github.com/thewildhive/go-motd/blob/c97d867bc2b7b37e9a1be118785ff0193ba8a5fa/.github/workflows/ci.yml#L25): the Go jobs use `actions/setup-go` with `go-version-file: go.mod`. Quality pins actionlint separately; vulnerabilities pins govulncheck separately.
 - [`ci.yml:173`](https://github.com/thewildhive/go-motd/blob/c97d867bc2b7b37e9a1be118785ff0193ba8a5fa/.github/workflows/ci.yml#L173): `Required` aggregates the checks and is the stable ruleset context.
 - [`publish-release.yml:42`](https://github.com/thewildhive/go-motd/blob/c97d867bc2b7b37e9a1be118785ff0193ba8a5fa/.github/workflows/publish-release.yml#L42): the publisher checks out an immutable release tag before setting up Go and packaging assets.
 - [`package-release.sh:35`](https://github.com/thewildhive/go-motd/blob/c97d867bc2b7b37e9a1be118785ff0193ba8a5fa/.github/scripts/package-release.sh#L35): packaging invokes Go directly for five targets, then Debian packages and signed archives.
@@ -53,34 +52,32 @@ the existing tool pins before accepting an update.
 Set `GOTOOLCHAIN: local` at workflow level as well as in mise. Log `mise --version`,
 `mise ls`, and `mise exec -- go version` after installation. In Quality, assert
 that the exact Go version in `mise.toml` matches the `go.mod` directive and
-`mise exec -- go env GOVERSION`. A mismatch fails before builds or tests run.
+`mise exec -- go env GOVERSION`. A mismatch fails before compilation.
 
 ### Preserve the existing job boundaries
 
-Keep the current job IDs, names, triggers, permissions, timeouts, matrices,
-coverage output, and conventional-title/documentation/dependency checks.
+Keep the current job IDs, names, triggers, permissions, timeouts, build matrix,
+and conventional-title/documentation/dependency checks.
 Retain the `Required` aggregate and its dependency list. Do not add mise setup
 to jobs that only invoke GitHub Actions, such as dependency review or the
 aggregate gate. Preserve the Release Please and APT publishing workflows;
 they do not compile Go in the researched baseline.
 
 Use `mise exec --` for direct tool commands and scripts that invoke Go. Preserve
-the separate quality, tests, builds, and vulnerability jobs instead of running
+the separate quality, builds, and vulnerability jobs instead of running
 the entire local gate in every job:
 
 | Job | Managed invocation |
 | --- | --- |
 | Quality | `mise exec -- gofmt -l .`, `mise exec -- go mod tidy`, `mise exec -- go mod verify`, `mise exec -- go vet ./...`, and `mise exec -- actionlint` |
-| Tests | `mise exec -- go test -race -count=1 -covermode=atomic -coverprofile=coverage.out ./...` and `mise exec -- go tool cover -func=coverage.out` |
 | Builds | `GOOS=... GOARCH=... mise exec -- go build -buildvcs=false ./...` for the existing five targets |
-| Debian | `mise exec -- bash .github/scripts/test-deb.sh` and the existing installer/APT test scripts |
 | Vulnerabilities | Build the native binary with managed Go; run `mise exec -- govulncheck -mode=binary /tmp/motd-vulncheck` |
 
 Keep module consistency checks that fail on diffs to `go.mod` or `go.sum`.
 ShellCheck must be available to actionlint on PATH; new lint findings require
 fixes or specific, explained suppressions. Do not disable ShellCheck globally.
-Keep OS packaging utilities such as `apt-utils`, `dpkg-dev`, and GnuPG in their
-existing system-package installation steps.
+Keep OS packaging utilities such as `apt-utils`, `dpkg-dev`, and GnuPG in the
+publishing workflows that use them.
 
 ### Cache tools and Go builds separately
 
@@ -111,23 +108,20 @@ install that Go version through mise, and invoke packaging with
 broken mise config must fail rather than entering the legacy branch. Verify
 recovery against an actual pre-migration tag before changing the publisher.
 
-## Testing and validation
+## Validation
 
-1. Run `mise install`, `mise run check`, and `mise run smoke` in a complete checkout. Keep native vet/tests/race tests, all five cross-builds, binary vulnerability analysis, actionlint, and shell syntax checks passing.
+1. Run `mise install`, `mise run check`, and `mise run smoke` in a complete checkout. Confirm vet, all five cross-builds, binary vulnerability analysis, actionlint, and shell syntax checks pass. Record the built CLI's help and version output.
 2. Validate Renovate with its official strict config validator. Inspect extraction and a first update PR: Go changes both pins together; validation tools are detected; the new bootstrap manager finds every mise-action version input; Dependabot ownership stays distinct.
-3. Run the CI workflow from a PR and a merge-group event. Confirm the same `CI / Required` context and applicable checks, including AMD64/ARM Debian jobs. Fork PRs must work without privileged credentials or release secrets.
-4. Exercise clean and warm caches on both runner architectures. Bump a tool pin in a test branch and confirm the next run installs and reports that version. A stale cache must not select a different compiler.
+3. Run the CI workflow from a PR and a merge-group event. Confirm the same `CI / Required` context and the five release build targets. Fork PRs must work without privileged credentials or release secrets.
+4. Exercise clean and warm caches on the runners used by the migrated jobs. Bump a tool pin on a branch and confirm the next run installs and reports that version. A stale cache must not select a different compiler.
 5. Deliberately mismatch the two Go pins and verify a clear Quality failure. Test an invalid/unavailable tool pin and confirm setup fails rather than using runner-provided binaries.
 6. Build and verify the complete release set with a disposable signing key. Test both a new tag with mise config and a pre-migration tag without it. Recovery must use each tag's exact compiler and retain byte-for-byte asset comparison.
 7. Search workflows and Make targets for residual `actions/setup-go`, duplicated Go/tool versions, and `go run ...@v` installs. Account explicitly for any remaining occurrence before declaring migration complete.
 
-Preparation verified on Linux ARM64 with Go `1.27.2`: formatting, module
-consistency, vet, tests, race tests, all five cross-builds, native vulnerability
-analysis, workflow validation, and CLI smoke tests passed. Debian package
-install, upgrade, removal, config preservation, and updater checks passed in a
-disposable dpkg root outside the filesystem sandbox. Renovate `44.150.1` passed
-strict config validation and extraction/rule checks for all four tools and
-both grouped Go pins.
+At preparation time, Linux ARM64 with Go `1.27.2` passed all five cross-builds,
+native vulnerability analysis, and workflow validation. Renovate `44.150.1`
+passed strict config validation and extraction/rule checks for all four tools
+and both grouped Go pins.
 
 The existing Renovate onboarding PR is connected to the repository. Before
 the Go upgrade, its vulnerability check reported eight standard-library

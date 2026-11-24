@@ -7,9 +7,9 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"motd/config"
 	"motd/display"
@@ -218,51 +218,31 @@ func CollectMediaStatuses(cfg config.Config, selected map[string]bool, client *h
 }
 
 func collectMediaStatuses(services []Service, client *http.Client, debug bool) []MediaStatus {
-	var wg sync.WaitGroup
-	results := make(chan MediaStatus, len(services))
-	limit := MaxConcurrentMediaChecks()
-	if limit > len(services) {
-		limit = len(services)
-	}
-	semaphore := make(chan struct{}, limit)
-	order := 0
-
-	start := func(svc Service) {
-		currentOrder := order
-		order++
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			semaphore <- struct{}{}
-			defer func() { <-semaphore }()
-			text, color, ok := svc.Render(client, debug)
-			if ok {
-				results <- MediaStatus{Order: currentOrder, Name: svc.Name(), Text: text, Color: color}
-			} else {
-				results <- MediaStatus{Order: currentOrder, Name: svc.Name(), Text: "unavailable", Color: display.Yellow, Error: "unavailable"}
+	results := make([]MediaStatus, len(services))
+	var next atomic.Int64
+	worker := func() {
+		for {
+			i := int(next.Add(1) - 1)
+			if i >= len(services) {
+				return
 			}
-		}()
+			svc := services[i]
+			text, color, ok := svc.Render(client, debug)
+			status := MediaStatus{Order: i, Name: svc.Name(), Text: text, Color: color}
+			if !ok {
+				status.Text, status.Color, status.Error = "unavailable", display.Yellow, "unavailable"
+			}
+			results[i] = status
+		}
 	}
 
-	for _, svc := range services {
-		start(svc)
+	var wg sync.WaitGroup
+	for i := 1; i < min(len(services), MaxConcurrentMediaChecks()); i++ {
+		wg.Go(worker)
 	}
-
-	go func() {
-		wg.Wait()
-		close(results)
-	}()
-
-	collected := make([]MediaStatus, 0, order)
-	for result := range results {
-		collected = append(collected, result)
-	}
-
-	sort.Slice(collected, func(i, j int) bool {
-		return collected[i].Order < collected[j].Order
-	})
-
-	return collected
+	worker()
+	wg.Wait()
+	return results
 }
 
 // IsPlaintextToRemote returns true when rawURL uses http:// with a

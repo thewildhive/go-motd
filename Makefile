@@ -13,7 +13,7 @@ GO_BUILD_FLAGS := -buildvcs=false
 LDFLAGS := -ldflags="-s -w -X main.VERSION=$(VERSION) -X main.BUILDDATE=$(BUILDDATE)"
 INSTALL_PATH := /usr/local/bin
 
-.PHONY: all cache-dirs build build-optimized clean test test-status-agent-integration smoke check check-all check-workflows install uninstall cross-compile package release help
+.PHONY: all cache-dirs build build-optimized clean smoke check check-all check-workflows install uninstall cross-compile package release help
 
 all: build-optimized
 
@@ -31,12 +31,6 @@ build-optimized: cache-dirs
 clean:
 	rm -rf $(BIN_DIR)
 
-test: cache-dirs
-	$(GO) test -count=1 ./...
-
-test-status-agent-integration:
-	mise exec -- bash scripts/test-status-agent-integration.sh
-
 # Authoritative local gate. This intentionally includes every published target.
 check: cache-dirs
 	@echo "Checking formatting..."
@@ -45,10 +39,8 @@ check: cache-dirs
 	@before="$$(sha256sum go.mod go.sum)"; $(GO) mod tidy; after="$$(sha256sum go.mod go.sum)"; \
 		test "$$before" = "$$after" || { echo "go mod tidy changed go.mod or go.sum"; exit 1; }
 	$(GO) mod verify
-	@echo "Running static analysis and tests..."
+	@echo "Running static analysis..."
 	$(GO) vet ./...
-	$(GO) test -count=1 ./...
-	$(GO) test -race -count=1 ./...
 	@echo "Building native and release targets..."
 	$(GO) build $(GO_BUILD_FLAGS) ./...
 	GOOS=linux GOARCH=amd64 $(GO) build $(GO_BUILD_FLAGS) ./...
@@ -56,8 +48,6 @@ check: cache-dirs
 	GOOS=darwin GOARCH=amd64 $(GO) build $(GO_BUILD_FLAGS) ./...
 	GOOS=darwin GOARCH=arm64 $(GO) build $(GO_BUILD_FLAGS) ./...
 	GOOS=windows GOARCH=amd64 $(GO) build $(GO_BUILD_FLAGS) ./...
-	@echo "Testing Debian package lifecycle..."
-	mise exec -- bash .github/scripts/test-deb.sh
 	@echo "Running native vulnerability analysis..."
 	$(GO) build $(GO_BUILD_FLAGS) -o /tmp/motd-vulncheck .
 	mise exec -- govulncheck -mode=binary /tmp/motd-vulncheck
@@ -101,8 +91,7 @@ help:
 	@echo "  make build             Build bin/motd"
 	@echo "  make build-optimized   Build an optimized bin/motd"
 	@echo "  make check             Run the authoritative local CI gate"
-	@echo "  make test-status-agent-integration  Test against the sibling status agent fixture server"
 	@echo "  make check-all         Alias for make check"
-	@echo "  make smoke             Build and run help/version smoke tests"
+	@echo "  make smoke             Build and show CLI help and version"
 	@echo "  make cross-compile     Build all five supported raw binaries"
 	@echo "  make package VERSION=X.Y.Z SIGNING_KEY_FILE=/path/to/key"

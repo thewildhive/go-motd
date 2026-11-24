@@ -165,19 +165,17 @@ sudo ln -s "$HOME/bin/figlet" /usr/local/bin/figlet
 
 Run with `-d` (debug) to see which tools are not found and why configured media services are skipped.
 
-### Status Agent Integration Test
+### Inspect container status
 
-When the sibling `../motd-status-agent` checkout is available, run the
-fixture-backed end-to-end test:
+On a host with a running `motd-status-agent` and `system.container_status` enabled in your config, compare the terminal summary with the JSON workload details:
 
 ```bash
-make test-status-agent-integration
+./bin/motd check-config
+./bin/motd -no-color
+./bin/motd -json
 ```
 
-This builds the real agent fixture server and `go-motd`, connects them through a
-temporary Unix socket, verifies the expected 2-of-5 aggregate and JSON workload
-details, checks that terminal output remains aggregate-only, and verifies that
-agent failure omits container status instead of reporting zero or cached data.
+For a nonempty snapshot, the terminal shows the aggregate `Containers` line without workload names. JSON includes names and individual statuses. If the agent is unavailable, both forms omit container status rather than reporting zero workloads.
 
 ## Seerr Integration
 
@@ -243,7 +241,7 @@ mise install
 mise run check
 ```
 
-`mise run build`, `mise run test`, and `mise run smoke` wrap the Make targets.
+`mise run build` builds `bin/motd`; `mise run smoke` builds it and prints its help and version.
 Make also invokes toolchain commands through mise. See
 [CONTRIBUTING.md](CONTRIBUTING.md#toolchain-updates) for Renovate setup and updates.
 

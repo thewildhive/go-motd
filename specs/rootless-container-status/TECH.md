@@ -57,7 +57,7 @@ Stable v1 error codes are `bad_request`, `not_found`, `method_not_allowed`, `run
 - Implement a local `http.Client` with a custom `http.Transport.DialContext` that always dials the configured Unix socket. Set the client timeout to one second and disable redirects. Do not use a package global client or transport.
 - Limit the response body to 1 MiB plus one sentinel byte before decoding. Reject oversized data, non-200 status, non-JSON content, malformed JSON, trailing JSON values, duplicate names, invalid enums, unsupported protocol versions, stale timestamps, and timestamps over five seconds in the future.
 - Derive counts only after validating the complete response. Sort workloads by name. Return `(ContainerStatus, true)` for a valid empty response and `false` for unavailable data so JSON can distinguish these states.
-- Delete `system/compose.go` and `system/compose_test.go`, remove `ShowDocker`, and remove `ComposeDir` from `system.ConfigAccessor`.
+- Remove `ShowDocker` and the `ComposeDir` method of `system.ConfigAccessor`.
 
 ### Rendering and Diagnostics
 
@@ -67,21 +67,16 @@ Stable v1 error codes are `bad_request`, `not_found`, `method_not_allowed`, `run
 - Extend `check-config`: parse duration and require it to be positive; require an absolute socket path; inspect existing entries with `os.Lstat`; require a Unix socket; and attempt a bounded protocol request to distinguish permission/connectivity errors. A nonexistent socket is a warning. Protocol or permission failures are errors because a present endpoint cannot be consumed.
 - Gate Unix-socket communication by platform. On Windows, configured container status produces an actionable validation error and normal output skips it. Darwin can use Unix sockets but the external agent remains Linux-only; cross-platform compilation must retain all symbols.
 
-## Testing and Validation
+## Validation
 
-- Config tests cover absent/default values, valid status config, malformed durations, strict unknown fields, and the targeted `compose_dir` migration error (Behavior 1-6, 24).
-- Client tests use a temporary Unix listener and HTTP server to cover success, empty lists, every state/health combination, deterministic sorting, additive fields, duplicate names, malformed/trailing JSON, non-200 error bodies, unsupported versions, 1 MiB limits, stale/future timestamps, timeout, disconnect, and unavailable socket (Behavior 7-11, 14-21, 27).
-- Rendering tests capture output for all-online, degraded, empty, and unavailable snapshots and assert names never appear in terminal output (Behavior 12-14, 19, 23, 26).
-- JSON tests assert the complete schema and every workload's derived online value, including an empty configured source and omission on failure (Behavior 14-16, 19).
-- Wizard and diagnostics tests cover enable/edit/remove flows, defaults, path type, missing socket warning, permission/connect failures, invalid max age, and unsupported platforms (Behavior 2-6, 22).
-- Documentation and repository searches verify no active `compose_dir`, `ShowDocker`, Docker Compose polling, or obsolete config example remains (Behavior 23-26).
-- Run `gofmt`, `go vet ./...`, `go test ./... -count=1`, race tests, and Linux/Windows/Darwin amd64 plus Darwin arm64 builds through `make check` or the equivalent required commands.
-- Perform one Linux integration check against a protocol fixture and, after the agent exists, one end-to-end check against its real Unix socket.
-- The cross-repository check is `make test-status-agent-integration`. It builds `../motd-status-agent/cmd/motd-status-agent-fixture` and `go-motd`, serves the agent repository's canonical `testdata/v1/status.json` through the real Unix-socket HTTP server, asserts 2 of 5 online plus JSON workload details, checks aggregate-only terminal output, and verifies omission after socket shutdown.
+- Build with `make build`. On a host with the real status agent, use `./bin/motd configure` to enable the socket in a local config, then run `./bin/motd check-config` as the account that reads the MOTD. Record the diagnostics, including any path or permission errors.
+- Compare `./bin/motd -no-color` and `./bin/motd -json` with the workloads actually served by the agent. The terminal shows only the aggregate for a nonempty snapshot; JSON includes the sorted names, health, and derived online values. A valid empty snapshot is present in JSON but omitted from terminal output.
+- Point a separate config at a nonexistent absolute socket path and run both report modes with `-config /path/to/config.json`. Confirm container status is omitted, not reported as zero, and other system information still appears.
+- Run `make check` for static analysis and compilation on all five release targets. Attach the relevant CLI commands and output as runtime evidence.
 
 ## Risks and Mitigations
 
 - Immediate `compose_dir` removal breaks existing configuration. The dedicated migration error and documentation make the required action explicit.
 - A shared `/var/run` socket requires administrator-managed ownership. The consumer never creates or changes it and treats absence as best-effort.
 - Login latency can regress if socket operations hang. The single one-second client deadline, body limit, and no-retry rule bound the impact.
-- Protocol drift across repositories is controlled by copying the v1 schema and contract tests into both technical specs; incompatible changes require protocol version 2.
+- Keep the v1 schema in both technical specs aligned with the real agent response; incompatible changes require protocol version 2.

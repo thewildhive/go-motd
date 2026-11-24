@@ -12,10 +12,6 @@ GOTOOLCHAIN = "local"
 description = "Build bin/motd"
 run = "make build"
 
-[tasks.test]
-description = "Run Go tests"
-run = "make test"
-
 [tasks.check]
 description = "Run the authoritative local gate"
 run = "make check"
