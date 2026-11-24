@@ -1,5 +1,17 @@
 # Changelog
 
+## [3.2.2](https://github.com/thewildhive/go-motd/compare/v3.2.1...v3.2.2) (2026-11-24)
+
+
+### Bug Fixes
+
+* align terminal labels and tighten hostname spacing ([#88](https://github.com/thewildhive/go-motd/issues/88)) ([3107346](https://github.com/thewildhive/go-motd/commit/3107346bd3060538dc5479f4b6091852d3d907b0))
+
+
+### Code Refactors
+
+* bound media status workers and retire test suites ([#86](https://github.com/thewildhive/go-motd/issues/86)) ([19ab2d2](https://github.com/thewildhive/go-motd/commit/19ab2d2e651d199654f28651b76ad0cfca4b780e))
+
 ## [3.2.1](https://github.com/thewildhive/go-motd/compare/v3.2.0...v3.2.1) (2026-11-24)
 
 
